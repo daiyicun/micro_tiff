@@ -2,13 +2,11 @@
 //
 
 #include <iostream>
-#include <random>
-#include <omp.h>
 #include "..\..\src\classic_tiff\classic_tiff_library.h"
 
 void tiff_read_example()
 {
-    int32_t hdl = open_tiff(L"tiff_read_sample.tif", tiff::OpenMode::READ_ONLY_MODE);
+    int32_t hdl = open_tiff(L"classic_tiff_read_sample.tif", tiff::OpenMode::READ_ONLY_MODE);
     if (hdl < 0)
     {
         std::cout << "Open file failed with error : " << hdl << std::endl;
@@ -52,7 +50,7 @@ void tiff_read_performance()
 
 void tiff_write_example()
 {
-    int32_t hdl = open_tiff(L"tiff_write_example.tif", tiff::OpenMode::CREATE_MODE);
+    int32_t hdl = open_tiff(L"classic_tiff_write_example.tif", tiff::OpenMode::CREATE_MODE);
     if (hdl < 0)
     {
         std::cout << "Create file failed with error : " << hdl << std::endl;
@@ -76,9 +74,6 @@ void tiff_write_example()
             break;
         }
 
-        std::mt19937 generator;
-        std::uniform_int_distribution<int> distribution(0, (1 << 16) - 1);
-
         uint16_t* buffer = (uint16_t*)calloc(info.width * info.height, 2);
         if (buffer == nullptr)
         {
@@ -86,14 +81,10 @@ void tiff_write_example()
             break;
         }
 
-        int32_t threads = omp_get_num_procs() / 2;
-        if (!omp_in_parallel())
-            omp_set_num_threads(threads);
-
-#pragma omp parallel for
         for (int i = 0; i < (int)(info.height * info.width); i++)
         {
-			buffer[i] = (uint16_t)distribution(generator);
+            uint16_t value = i % (65536);
+			buffer[i] = value;
         }
 
         int32_t status = save_image_data(hdl, image_number, buffer);
