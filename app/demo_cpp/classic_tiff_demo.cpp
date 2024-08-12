@@ -2,6 +2,7 @@
 //
 
 #include <iostream>
+#include "..\..\src\classic_tiff\classic_tiff_library.h"
 
 void tiff_read_example()
 {
