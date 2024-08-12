@@ -36,7 +36,10 @@ void tiff_read_example()
         }
         status = load_image_data(hdl, 0, buffer);
         if (status != 0)
-            std::cout << "Load image failed." << std::endl;
+            std::cout << "tiff_read_example failed." << std::endl;
+        else {
+            std::cout << "tiff_read_example success." << std::endl;
+        }
         free(buffer);
     } while (false);
 
@@ -89,7 +92,10 @@ void tiff_write_example()
 
         int32_t status = save_image_data(hdl, image_number, buffer);
         if (status != 0)
-            std::cout << "Save image data failed with error : " << std::endl;
+            std::cout << "tiff_write_example failed." << std::endl;
+        else {
+            std::cout << "tiff_write_example success." << std::endl;
+        }
 
         free(buffer);
     } while (false);
@@ -104,9 +110,9 @@ void tiff_write_performance()
 
 int main()
 {
-    std::cout << "Hello World!\n";
     tiff_write_example();
     tiff_read_example();
+    std::cout << "Hello World!\n";
 }
 
 // Run program: Ctrl + F5 or Debug > Start Without Debugging menu
