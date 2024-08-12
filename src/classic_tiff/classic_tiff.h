@@ -1,5 +1,5 @@
 #pragma once
-#include "..\common\tiff_def.h"
+#include "classic_def.h"
 #include <map>
 #include <vector>
 

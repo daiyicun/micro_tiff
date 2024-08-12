@@ -1,9 +1,10 @@
 #include "classic_tiff_library.h"
 #include "classic_tiff.h"
-#include "..\common\error.h"
+#include "classic_def.h"
 #include <vector>
 #include <mutex>
 
+using namespace tiff;
 //Functions for SINGLE-TIFF image
 static std::vector<tiff_single*> vecSingleTiff;
 static std::mutex mutexSingleTiff;

@@ -4,7 +4,7 @@
 #else
 #define CLASSIC_TIFF_LIBRARY_API extern "C" __declspec(dllimport)
 #endif
-#include "..\common\tiff_def.h"
+#include "classic_def.h"
 /**********************************************************************************
 Important Tips:
 

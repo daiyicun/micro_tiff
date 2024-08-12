@@ -2,7 +2,7 @@
 #include "..\micro_tiff\micro_tiff.h"
 #include "..\lzw\lzw.h"
 #include "..\lzw\data_predict.h"
-#include "..\common\error.h"
+#include "classic_def.h"
 
 #include <omp.h>
 #include <io.h>
@@ -18,6 +18,7 @@
 #define OMP_COMPRESS_TILE_HEIGHT 32
 
 using namespace std;
+using namespace tiff;
 
 int32_t save_with_zlib(int32_t hdl, uint32_t ifd_no, void* buf, ImageInfo info)
 {
@@ -71,7 +72,7 @@ int32_t save_with_lzw_horidif(int32_t hdl, uint32_t ifd_no, void* buf, ImageInfo
 			uint64_t raw_data_used_size, dst_len;
 			int encode_status = LZWEncode(src_buf, src_len, &raw_data_used_size, dst_buf + header_size, strip_alloc_size, &dst_len);
 			if (encode_status != 1 || raw_data_used_size != src_len) {
-				status = ErrorCode::ERR_COMPRESS_ERROR;
+				status = ErrorCode::ERR_COMPRESS_LZW_ERROR;
 			}
 			else {
 				*((uint64_t*)(dst_buf)) = dst_len;
