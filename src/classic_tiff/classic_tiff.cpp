@@ -338,6 +338,7 @@ int32_t tiff_single::get_image_info(uint32_t image_number, tiff::SingleImageInfo
 	info->valid_bits = image_info.bits_per_sample;
 	info->width = image_info.image_width;
 	info->height = image_info.image_height;
+	info->samples_per_pixel = image_info.samples_per_pixel;
 	if (image_info.samples_per_pixel == 1)
 	{
 		info->image_type = tiff::ImageType::IMAGE_GRAY;
