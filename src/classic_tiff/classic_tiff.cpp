@@ -134,10 +134,9 @@ int32_t info_conversion(tiff::SingleImageInfo& image_info, ImageInfo& info)
 	info.planarconfig = PLANARCONFIG_CONTIG;
 	info.photometric = PHOTOMETRIC_MINISBLACK;
 	info.image_byte_count = (image_info.valid_bits + 7) / 8;
-	info.samples_per_pixel = 1;
-	if (image_info.image_type == tiff::ImageType::IMAGE_RGB)
+	info.samples_per_pixel = image_info.samples_per_pixel;
+	if (info.samples_per_pixel == 3 && image_info.image_type == tiff::ImageType::IMAGE_RGB)
 	{
-		info.samples_per_pixel = 3;
 		info.photometric = tiffCompression == COMPRESSION_JPEG ? PHOTOMETRIC_YCBCR : PHOTOMETRIC_RGB;
 	}
 
@@ -272,14 +271,18 @@ int32_t tiff_single::save_image_data(uint32_t image_number, void* image_data, ui
 		return ErrorCode::ERR_BUFFER_SIZE_ERROR;
 	}
 
-	void* buf = malloc(static_cast<size_t>(block_size));
+	void* buf = image_data;
+	if (block_stride != stride)
+	{
+		buf = malloc(static_cast<size_t>(block_size));
 	if (buf == nullptr)
 		return ErrorCode::ERR_BUFFER_IS_NULL;
 
-	uint32_t buffer_width = stride / info.image_byte_count;
-	//no matter the source data is single-channle or multi-channel, treate it as single-channel data
-	//p2d_region region = { (int32_t)block_pixel_width, (int32_t)info.image_height };
-	//p2d_img_copy(image_data, { 0,0 }, stride, { (int32_t)buffer_width, (int32_t)info.image_height }, buf, { 0,0 }, block_stride, region, (p2d_data_format)image_info.pixel_type, region);
+		for (uint32_t i = 0; i < info.image_height; i++)
+		{
+			memcpy_s((uint8_t*)buf + (i * block_stride), block_stride, (uint8_t*)image_data + (i * stride), stride);
+		}
+	}
 
 	int32_t status = ErrorCode::STATUS_OK;
 	switch (info.compression)
@@ -300,7 +303,8 @@ int32_t tiff_single::save_image_data(uint32_t image_number, void* image_data, ui
 		break;
 	}
 
-	free(buf);
+	if (buf != image_data)
+		free(buf);
 	return status;
 }
 
@@ -334,10 +338,18 @@ int32_t tiff_single::get_image_info(uint32_t image_number, tiff::SingleImageInfo
 	info->valid_bits = image_info.bits_per_sample;
 	info->width = image_info.image_width;
 	info->height = image_info.image_height;
-	if (image_info.photometric == PHOTOMETRIC_RGB || image_info.photometric == PHOTOMETRIC_YCBCR)
-		info->image_type = tiff::ImageType::IMAGE_RGB;
-	else
+	if (image_info.samples_per_pixel == 1)
+	{
 		info->image_type = tiff::ImageType::IMAGE_GRAY;
+	}
+	else if (image_info.samples_per_pixel == 3 && (image_info.photometric == PHOTOMETRIC_RGB || image_info.photometric == PHOTOMETRIC_YCBCR))
+	{
+		info->image_type = tiff::ImageType::IMAGE_RGB;
+	}
+	else
+	{
+		info->image_type = tiff::ImageType::IMAGE_FLIM;
+	}
 
 	switch (image_info.compression)
 	{
@@ -483,11 +495,14 @@ int32_t tiff_single::load_image_data(uint32_t image_number, void* image_data, ui
 				}
 			}
 			if (status == ErrorCode::STATUS_OK)
-			//{
-			//	p2d_region region = { (int32_t)block_width * image_info.samples_per_pixel, (int32_t)block_height };
-			//	p2d_point point = { (int32_t)(column * complete_block_pixel_width), (int32_t)(row * image_info.block_height) };
-			//	status = p2d_img_copy(block_buf, { 0,0 }, block_stride, region, image_data, point, stride, { (int32_t)dst_buffer_width, (int32_t)image_info.image_height }, (p2d_data_format)pixel_type, region);
-			//}
+			{
+				for (uint32_t h = 0; h < block_height; h++)
+				{
+					uint8_t* src_ptr = (uint8_t*)block_buf + h * block_width * image_info.samples_per_pixel;
+					uint8_t* dst_ptr = (uint8_t*)image_data + (row * image_info.block_height + h) * stride + column * complete_block_pixel_width;
+					memcpy_s(dst_ptr, block_width * image_info.samples_per_pixel, src_ptr, block_width * image_info.samples_per_pixel);
+				}
+			}
 			if (status != ErrorCode::STATUS_OK) {
 				return status;
 			}
