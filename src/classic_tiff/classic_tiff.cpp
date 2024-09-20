@@ -1,7 +1,7 @@
 #include "classic_tiff.h"
 #include "..\micro_tiff\micro_tiff.h"
 #include "..\lzw\lzw.h"
-#include "..\lzw\data_predict.h"
+#include "..\common\data_predict.h"
 #include "classic_def.h"
 
 #include <omp.h>

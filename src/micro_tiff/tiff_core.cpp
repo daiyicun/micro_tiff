@@ -52,7 +52,7 @@ TiffErrorCode tiff_core::open(const wchar_t* tiffFullName, uint8_t open_flag)
 		return TiffErrorCode::TIFF_ERR_OPEN_FILE_FAILED;
 	}
 	else {
-		_full_path_name = std::wstring(tiffFullName);
+		_full_path_name = wstring(tiffFullName);
 		if (isCreate) 
 		{
 			ret = WriteHeader();
@@ -150,7 +150,7 @@ int32_t tiff_core::create_ifd(ImageInfo& image_info)
 	if ((_open_flag & OPENFLAG_WRITE) == OPENFLAG_READ) {
 		return TiffErrorCode::TIFF_ERR_WRONG_OPEN_MODE;
 	}
-	tiff_ifd* ifd = new(std::nothrow) tiff_ifd(_big_tiff, _big_endian, _tiff_hdl);
+	tiff_ifd* ifd = new(nothrow) tiff_ifd(_big_tiff, _big_endian, _tiff_hdl);
 	if (ifd == nullptr) {
 		return TiffErrorCode::TIFF_ERR_ALLOC_MEMORY_FAILED;
 	}
@@ -174,7 +174,7 @@ int32_t tiff_core::load_ifds(void)
 
 	int32_t err;
 	while (next_ifd_offset != 0) {
-		tiff_ifd* ifd = new(std::nothrow) tiff_ifd(_big_tiff, _big_endian, _tiff_hdl);
+		tiff_ifd* ifd = new(nothrow) tiff_ifd(_big_tiff, _big_endian, _tiff_hdl);
 		if (ifd == nullptr) {
 			return TiffErrorCode::TIFF_ERR_ALLOC_MEMORY_FAILED;
 		}
@@ -196,7 +196,7 @@ int32_t tiff_core::save_block(uint32_t ifd_no, uint32_t block_no, uint64_t actua
 	}
 	CHECK_TIFF_ERROR(check_handle<tiff_ifd>(ifd_no, ifd_container, TiffErrorCode::TIFF_ERR_NO_IFD_FOUND));
 	tiff_ifd* ifd = ifd_container[ifd_no];
-	std::unique_lock<std::mutex> lck(_mutex);
+	unique_lock<mutex> lck(_mutex);
 	return ifd->wr_block(block_no, actual_byte_size, buf);
 }
 
@@ -204,7 +204,7 @@ int32_t tiff_core::load_block(uint32_t ifd_no, uint32_t block_no, uint64_t& actu
 {
 	CHECK_TIFF_ERROR(check_handle<tiff_ifd>(ifd_no, ifd_container, TiffErrorCode::TIFF_ERR_NO_IFD_FOUND));
 	tiff_ifd* ifd = ifd_container[ifd_no];
-	std::unique_lock<std::mutex> lck(_mutex);
+	unique_lock<mutex> lck(_mutex);
 	return ifd->rd_block(block_no, actual_byte_size, buf);
 }
 
@@ -236,7 +236,7 @@ int32_t tiff_core::close_ifd(uint32_t ifd_no)
 		ifd_offset_pos = previous_ifd->get_next_ifd_pos();
 	}
 	if (!ifd->get_is_purged()) {
-		std::unique_lock<std::mutex> lck(_mutex);
+		unique_lock<mutex> lck(_mutex);
 		TiffErrorCode code = ifd->wr_purge();
 		if (code != TiffErrorCode::TIFF_STATUS_OK)
 			return code;
@@ -265,7 +265,7 @@ int32_t tiff_core::set_tag(uint32_t ifd_no, uint16_t tag_id, uint16_t tag_data_t
 	}
 	CHECK_TIFF_ERROR(check_handle<tiff_ifd>(ifd_no, ifd_container, TiffErrorCode::TIFF_ERR_NO_IFD_FOUND));
 	tiff_ifd* ifd = ifd_container[ifd_no];
-	std::unique_lock<std::mutex> lck(_mutex);
+	unique_lock<mutex> lck(_mutex);
 	return ifd->set_tag(tag_id, tag_data_type, tag_count, buf);
 }
 
@@ -280,6 +280,6 @@ int32_t tiff_core::get_tag(uint32_t ifd_no, uint16_t tag_id, void* buf)
 {
 	CHECK_TIFF_ERROR(check_handle<tiff_ifd>(ifd_no, ifd_container, TiffErrorCode::TIFF_ERR_NO_IFD_FOUND));
 	tiff_ifd* ifd = ifd_container[ifd_no];
-	std::unique_lock<std::mutex> lck(_mutex);
+	unique_lock<mutex> lck(_mutex);
 	return ifd->get_tag(tag_id, buf);
 }

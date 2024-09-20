@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #ifdef CLASSIC_TIFF_LIBRARY_EXPORTS
 #define CLASSIC_TIFF_LIBRARY_API extern "C" __declspec(dllexport)
 #else

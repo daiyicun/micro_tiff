@@ -37,7 +37,7 @@ int32_t micro_tiff_Open(const wchar_t* full_name, uint8_t open_flag)
 		}
 	}
 
-	tiff_core* tiff = new(std::nothrow) tiff_core();
+	tiff_core* tiff = new(nothrow) tiff_core();
 	if (tiff == nullptr) {
 		return TiffErrorCode::TIFF_ERR_ALLOC_MEMORY_FAILED;
 	}
