@@ -1,0 +1,210 @@
+<Window x:Class="ImageReviewTool.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:ImageReviewTool"
+        xmlns:imageTool="clr-namespace:ImageReviewTool.ImageTool"
+        xmlns:controls="clr-namespace:ImageReviewTool.Controls"
+        xmlns:converter="clr-namespace:ImageReviewTool.Converters"
+        mc:Ignorable="d"
+        Title="ImageReviewTool" Height="450" Width="800">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="./Resources/Folder_OutLine.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <Style TargetType="TextBlock">
+                <Setter Property="FontSize" Value="16"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+            </Style>
+            <Style TargetType="TextBox">
+                <Setter Property="FontSize" Value="14"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+            </Style>
+            <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+            <converter:InvertBoolConverter x:Key="InvertBoolConverter"/>
+            <converter:NullOrEmptyToBoolConverter x:Key="NullOrEmptyToBoolConverter"/>
+            <converter:CountToMaxIndexConverter x:Key="CountToMaxIndexConvereter"/>
+        </ResourceDictionary>
+    </Window.Resources>
+    <Border Margin="5,0,5,5" BorderThickness="1" BorderBrush="Black">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="300"/>
+                <ColumnDefinition/>
+            </Grid.ColumnDefinitions>
+            <Grid Margin="5">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition/>
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="1" Height="30" Width="120" HorizontalAlignment="Right" VerticalAlignment="Top" 
+                            IsEnabled="{Binding IsOpening, Converter={StaticResource InvertBoolConverter}}"
+                            Command="{Binding LoadCommand}" HorizontalContentAlignment="Stretch" >
+                        <Button.Content>
+                            <Grid HorizontalAlignment="Stretch">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Image Margin="10,0" Source="{StaticResource Folder_OutlineDrawingImage}"/>
+                                <TextBlock Grid.Column="1" Text="Load" HorizontalAlignment="Left" FontSize="18" FontWeight="DemiBold"/>
+                            </Grid>
+                        </Button.Content>
+                    </Button>
+                </Grid>
+                <CheckBox Grid.Row="1" Margin="0,5,0,0" VerticalAlignment="Center" HorizontalAlignment="Left" IsThreeState="False" IsChecked="{Binding IsShiftTo8Bits, Mode=TwoWay}" Content="Shift to 8bits"/>
+                <Border IsEnabled="{Binding IsValid}" Grid.Row="2" BorderBrush="Black" BorderThickness="0" Margin="0,5,0,0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Plates :"/>
+                        <ComboBox Margin="5,0,0,0" Grid.Column="1" 
+                                  ItemsSource="{Binding Plates}" DisplayMemberPath="BaseInfo.Name" SelectedItem="{Binding SelectedPlate}"/>
+                        <Grid Margin="10,5,0,0" Grid.Row="1" Grid.ColumnSpan="2"
+                              Visibility="{Binding SelectedPlate, Converter={StaticResource NullOrEmptyToBoolConverter}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Scans :"/>
+                            <ComboBox Margin="5,0,0,0" Grid.Column="1" 
+                                      ItemsSource="{Binding SelectedPlate.ScanDetails}" DisplayMemberPath="BaseInfo.Id" SelectedItem="{Binding SelectedPlate.SelectedScan}"/>
+                            <Grid Margin="10,5,0,0" Grid.Row="1" Grid.ColumnSpan="2"
+                                  Visibility="{Binding SelectedPlate, Converter={StaticResource NullOrEmptyToBoolConverter}}">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="5"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid Visibility="{Binding SelectedPlate.SelectedScan, Converter={StaticResource NullOrEmptyToBoolConverter}}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="5"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="Channels :"/>
+                                    <ComboBox Margin="5,0,0,0" Grid.Column="1" 
+                                          ItemsSource="{Binding SelectedPlate.SelectedScan.ChannelInfos}" DisplayMemberPath="Name" 
+                                          SelectedItem="{Binding SelectedPlate.SelectedScan.SelectedChannel}"/>
+                                    <TextBlock Grid.Row="2" Text="Regions :"/>
+                                    <ComboBox Margin="5,0,0,0" Grid.Row="2" Grid.Column="1" 
+                                          ItemsSource="{Binding SelectedPlate.SelectedScan.ScanRegionInfos}" DisplayMemberPath="Id" 
+                                          SelectedItem="{Binding SelectedPlate.SelectedScan.SelectedScanRegion}"/>
+                                </Grid>
+                                <Grid Grid.Row="3" Margin="-20,0,0,0" Grid.ColumnSpan="2"
+                                      Visibility="{Binding SelectedPlate.SelectedScan, Converter={StaticResource NullOrEmptyToBoolConverter}}">
+                                    <Grid Visibility="{Binding SelectedPlate.SelectedScan.SelectedScanRegion , Converter={StaticResource NullOrEmptyToBoolConverter}}">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <Grid Margin="0,5,0,0" Visibility="{Binding SelectedPlate.SelectedScan.SelectedScanRegion.PixelSizeZ, Converter={StaticResource NullOrEmptyToBoolConverter}}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Z : "/>
+                                            <controls:IgnoreDeltaSlider Grid.Column="1" VerticalAlignment="Center" Minimum="0" FinalValue="{Binding SelectedPlate.SelectedScan.ZIndex, Mode=TwoWay}"
+                                                                        Maximum="{Binding SelectedPlate.SelectedScan.SelectedScanRegion.PixelSizeZ, Converter={StaticResource CountToMaxIndexConvereter}}">
+                                                <controls:IgnoreDeltaSlider.ToolTip>
+                                                    <TextBlock>
+                                                        <Run Text="0"/><Run Text="~"/><Run Text="{Binding SelectedPlate.SelectedScan.SelectedScanRegion.PixelSizeZ, Converter={StaticResource CountToMaxIndexConvereter}}"/>
+                                                    </TextBlock>
+                                                </controls:IgnoreDeltaSlider.ToolTip>
+                                            </controls:IgnoreDeltaSlider>
+                                            <TextBox Grid.Column="2" Width="50" Margin="2,0,0,0" Text="{Binding SelectedPlate.SelectedScan.ZIndex, Mode=TwoWay}"
+                                                     controls:InputBindingsManager.UpdatePropertySourceWhenEnterPressed="TextBox.Text"/>
+                                        </Grid>
+                                        <Grid Grid.Row="1" Margin="0,5,0,0"
+                                              Visibility="{Binding SelectedPlate.SelectedScan.SelectedScanRegion.SizeT, Converter={StaticResource NullOrEmptyToBoolConverter}}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="T : "/>
+                                            <controls:IgnoreDeltaSlider Grid.Column="1" VerticalAlignment="Center" Minimum="0" FinalValue="{Binding SelectedPlate.SelectedScan.TIndex, Mode=TwoWay}"
+                                                                        Maximum="{Binding SelectedPlate.SelectedScan.SelectedScanRegion.SizeT, Converter={StaticResource CountToMaxIndexConvereter}}">
+                                                <controls:IgnoreDeltaSlider.ToolTip>
+                                                    <TextBlock>
+                                                        <Run Text="0"/><Run Text="~"/><Run Text="{Binding SelectedPlate.SelectedScan.SelectedScanRegion.SizeT, Converter={StaticResource CountToMaxIndexConvereter}}"/>
+                                                    </TextBlock>
+                                                </controls:IgnoreDeltaSlider.ToolTip>
+                                            </controls:IgnoreDeltaSlider>
+                                            <TextBox Grid.Column="2" Width="50" Margin="2,0,0,0" Text="{Binding SelectedPlate.SelectedScan.TIndex, Mode=TwoWay}"
+                                                     controls:InputBindingsManager.UpdatePropertySourceWhenEnterPressed="TextBox.Text"/>
+                                        </Grid>
+                                    </Grid>
+                                </Grid>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </Border>
+                <Grid Grid.Row="3" Margin="0,5" Visibility="{Binding IsPointInImage, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock>
+                            <Run Text="Pixel Position : "/>
+                        </TextBlock>
+                        <TextBox Text="{Binding PixelPointX, Mode=TwoWay}" Width="50"
+                                 controls:InputBindingsManager.UpdatePropertySourceWhenEnterPressed="TextBox.Text"/>
+                        <TextBlock>
+                            <Run Text=" , "/>
+                        </TextBlock>
+                        <TextBox Text="{Binding PixelPointY, Mode=TwoWay}" Width="50"
+                                 controls:InputBindingsManager.UpdatePropertySourceWhenEnterPressed="TextBox.Text"/>
+                    </StackPanel>
+                    <TextBlock Grid.Row="1" Margin="0,5">
+                        <Run Text="Physical Position : "/><Run Text="["/><Run Text="{Binding PhysicalPoint, Mode=OneWay}"/><Run Text="]"/>
+                    </TextBlock>
+                    <TextBlock Grid.Row="2">
+                        <Run Text="Intensity : "/><Run Text="{Binding Intensity, Mode=OneWay}"/>
+                    </TextBlock>
+                    <TextBlock Grid.Row="3" Margin="0,5" Text="Flim Data : "/>
+                    <ListBox Grid.Row="4" ItemsSource="{Binding FlimData}" VerticalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Foreground="{Binding ForegroundBrush}" Background="{Binding BackgroundBrush}" HorizontalAlignment="Stretch"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Grid>
+            <Border Grid.Column="1" BorderBrush="Black" BorderThickness="1,0,0,0">
+                <imageTool:ImageCanvas  Coordinate="{Binding Coordinate}" Items="{Binding Images}" CurrentTool="{Binding CurrentTool}"/>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

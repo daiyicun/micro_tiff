@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "ImageReviewTool": {
+      "commandName": "Project",
+      "nativeDebugging": true
+    }
+  }
+}
