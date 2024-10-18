@@ -1,6 +1,5 @@
 #pragma once
 #include "ome_def.h"
-#include <vector>
 #include <string>
 #include <map>
 
@@ -28,8 +27,8 @@ namespace ome
 		~Well();
 		Well& operator=(const Well& well);
 
-		int32_t add_well_sample(uint32_t plate_id, ScanRegionInfo scan_region_info, std::string& well_sample_id, std::string image_ref_id);
-		int32_t add_well_sample(ScanRegionInfo scan_region_info, std::string well_sample_id, std::string image_ref_id);
+		int32_t add_well_sample(uint32_t plate_id, ScanRegionInfo& scan_region_info, std::string& well_sample_id, std::string& image_ref_id);
+		int32_t add_well_sample(ScanRegionInfo& scan_region_info, const std::string& well_sample_id, const std::string& image_ref_id);
 
 	private:
 		uint32_t _well_sample_id_index;
@@ -47,7 +46,7 @@ namespace ome
 		~PlateAcquisition();
 		PlateAcquisition& operator=(const PlateAcquisition& plate_acquisition);
 
-		int32_t add_well_sample_ref(uint32_t region_id, std::string well_sample_ref_id);
+		int32_t add_well_sample_ref(uint32_t region_id, const std::string& well_sample_ref_id);
 	private:
 	};
 
@@ -174,7 +173,7 @@ namespace ome
 		int32_t add_tiff_data(TiffData& tiff_data);
 		int32_t get_tiff_data(uint32_t c, uint32_t z, uint32_t t, TiffData& tiff_data);
 
-		uint32_t get_t_size();
+		uint32_t get_t_size() const;
 
 	private:
 		uint32_t _t_max;

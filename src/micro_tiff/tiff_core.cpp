@@ -1,14 +1,13 @@
 #include "tiff_core.h"
-#include <io.h>
-#include <fcntl.h>
+
 using namespace std;
 
 tiff_core::tiff_core(void)
 {
 	_tiff_hdl = nullptr;
 	ifd_container.clear();
-	_big_endian = 0;
-	_big_tiff = 0;
+	_big_endian = false;
+	_big_tiff = false;
 	_open_flag = 0;
 	tif_first_ifd_offset = 0;
 	tif_first_ifd_position = 0;
@@ -73,19 +72,19 @@ TiffErrorCode tiff_core::WriteHeader(void)
 	_fseeki64(_tiff_hdl, 0, SEEK_SET);
 	//tif_curOffset = 0;
 	if (_big_tiff) {
-		unsigned char data[] = TIFF_BIGTIFF_HEADER_CHAR;
+		uint8_t data[] = TIFF_BIGTIFF_HEADER_CHAR;
 		size_t _size = sizeof(data);
 		WriteSequence(data, _size, 1);
 		WriteSequence(zero_data, BIG_TIFF_OFFSET_SIZE, 1);
 	}
 	else {
-		unsigned char data[] = TIFF_CLASSIC_HEADER_CHAR;
+		uint8_t data[] = TIFF_CLASSIC_HEADER_CHAR;
 		size_t _size = sizeof(data);
 		WriteSequence(data, _size, 1);
 		WriteSequence(zero_data, CLASSIC_TIFF_OFFSET_SIZE, 1);
 	}
 	{
-		unsigned char data[] = TIFF_HEADER_FLAG_STR;
+		uint8_t data[] = TIFF_HEADER_FLAG_STR;
 		size_t _size = sizeof(data);
 		WriteSequence(data, _size, 1);
 	}

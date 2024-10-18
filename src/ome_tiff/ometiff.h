@@ -3,6 +3,10 @@
 #include "ometiff_container.h"
 #include <mutex>
 
+#ifndef HEADERIMAGESIZE
+#define HEADERIMAGESIZE 64
+#endif // !HEADERIMAGESIZE
+
 class OmeTiff
 {
 public:
@@ -11,10 +15,11 @@ public:
 
 	int32_t Init(const wchar_t* file_name, ome::OpenMode mode, ome::CompressionMode cm);
 
-	int32_t SaveTileData(void* image_data, uint32_t stride, ome::FrameInfo frame, uint32_t row, uint32_t column);
+	int32_t SaveTileData(ome::FrameInfo frame, uint32_t row, uint32_t column, void* image_data, uint32_t stride);
 	int32_t PurgeFrame(ome::FrameInfo frame);
 
-	int32_t LoadRawData(ome::FrameInfo frame, ome::OmeSize dst_size, ome::OmeRect src_rect, void* buffer, uint32_t stride);
+	int32_t LoadRawData(ome::FrameInfo frame, ome::OmeSize dst_size, ome::OmeRect src_rect, void* image_data, uint32_t stride);
+	int32_t LoadRawData(ome::FrameInfo frame, uint32_t row, uint32_t column, void* image_data, uint32_t stride);
 
 	int32_t AddPlate(ome::PlateInfo& plate_info);
 	int32_t GetPlates(ome::PlateInfo* plates_info);
@@ -35,16 +40,19 @@ public:
 	int32_t RemoveChannel(uint32_t plate_id, uint32_t scan_id, uint32_t channel_id);
 
 	int32_t AddScanRegion(uint32_t plate_id, uint32_t scan_id, uint32_t well_id, ome::ScanRegionInfo& scan_region_info, 
-						  std::string well_sample_id = "", std::string image_ref_id = "");
+						  const std::string& well_sample_id = "", const std::string& image_ref_id = "");
 	int32_t GetScanRegions(uint32_t plate_id, uint32_t scan_id, uint32_t well_id, ome::ScanRegionInfo* scan_regions_info);
 	int32_t GetScanRegionsSize(uint32_t plate_id, uint32_t scan_id, uint32_t well_id);
 
-	int32_t SetCustomTag(ome::FrameInfo frame, uint16_t tag_id, uint16_t tag_type, uint32_t tag_count, void* tag_value);
-	int32_t GetCustomTag(ome::FrameInfo frame, uint16_t tag_id, uint32_t tag_size, void* tag_value);
+	int32_t SetTag(ome::FrameInfo frame, uint16_t tag_id, uint16_t tag_type, uint32_t tag_count, void* tag_value);
+	int32_t GetTag(ome::FrameInfo frame, uint16_t tag_id, uint32_t& tag_size, void* tag_value);
 
-	std::wstring GetFileFullName() { return _tiff_file_full_name; }
-	std::string GetUTF8FileName();
-	std::string GetFullPathWithFileName(std::string utf8_file_name);
+	int32_t CreateOMEHeader();
+
+	std::wstring GetFileFullName() const { return _tiff_file_full_name; }
+	std::string GetUTF8FileName() const;
+	std::string GetFullPathWithFileName(std::string& utf8_file_name);
+	ome::OpenMode GetOpenMode() const { return _open_mode; }
 
 	std::map<uint32_t, ome::Image*> _images;
 	std::map<uint32_t, ome::Plate*> _plates;
@@ -63,7 +71,6 @@ private:
 
 	bool _is_in_parsing;
 
-	int32_t RewriteOMEHeader();
 	int32_t GetRawContainer(ome::FrameInfo frame, TiffContainer** container, uint32_t& ifd_no, bool is_read);
 };
 

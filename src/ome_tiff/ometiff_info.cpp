@@ -1,7 +1,6 @@
 #include "ometiff_info.h"
 #include "..\tinyxml2\tinyxml2.h"
 
-#include <sstream>
 #include <filesystem>
 
 using namespace std;
@@ -176,10 +175,10 @@ static TimeUnit convert_string_to_time_unit(const char* str)
 	return TimeUnit::TIME_UNDEFINED;
 }
 
-int32_t parse_ome_xml(const char* xml, size_t xml_size, OmeTiff* tiff_obj)
+int32_t parse_ome_xml(const string& xml, OmeTiff* tiff_obj)
 {
 	tinyxml2::XMLDocument doc;
-	if (doc.Parse(xml, xml_size) != XMLError::XML_SUCCESS)
+	if (doc.Parse(xml.c_str(), xml.size()) != XMLError::XML_SUCCESS)
 		return ErrorCode::ERR_READ_OME_XML_FAILED;
 
 	const XMLElement* element_ome = doc.FirstChildElement("OME");
@@ -275,6 +274,12 @@ int32_t parse_ome_xml(const char* xml, size_t xml_size, OmeTiff* tiff_obj)
 			}
 
 			XML_SCANF(element_channel->Attribute("SamplesPerPixel"), "%u", &channel_info.sample_per_pixel);
+			if (element_channel->Attribute("BinSize") != nullptr) {
+				XML_SCANF(element_channel->Attribute("BinSize"), "%u", &channel_info.bin_size);
+			}
+			else {
+				channel_info.bin_size = 1;
+			}
 			status = image->_pixels.add_channel(channel_info);
 			if (status != ErrorCode::STATUS_OK)
 				return status;
@@ -300,7 +305,7 @@ int32_t parse_ome_xml(const char* xml, size_t xml_size, OmeTiff* tiff_obj)
 			XML_SCANF(element_tiff_data->Attribute("IFD"), "%u", &tiff_data.IFD);
 			tiff_data.FileName = UUID_file;
 
-			string full_path = tiff_obj->GetFullPathWithFileName(UUID_file);
+			string full_path = tiff_obj->GetFullPathWithFileName(tiff_data.FileName);
 			fs::path p_full{ full_path };
 			if (!fs::exists(p_full))
 			{
@@ -367,7 +372,7 @@ int32_t parse_ome_xml(const char* xml, size_t xml_size, OmeTiff* tiff_obj)
 				for (size_t i = 0; i < channel_ids.size(); i++)
 				{
 					uint32_t c = channel_ids[i];
-					auto it = find_if(tiff_datas.begin(), tiff_datas.end(), [&](TiffData data) { return data.FirstC == c; });
+					auto it = find_if(tiff_datas.begin(), tiff_datas.end(), [&](const TiffData& data) { return data.FirstC == c; });
 					if (it != tiff_datas.end())
 					{
 						TiffData tiff_data_c = *it;
@@ -505,7 +510,8 @@ int32_t parse_ome_xml(const char* xml, size_t xml_size, OmeTiff* tiff_obj)
 		while (element_plate_acquisition)
 		{
 			const char* plate_acquisition_id = element_plate_acquisition->Attribute("ID");
-			uint32_t inner_plate_id = 0, acquisition_id = 0;
+			uint32_t inner_plate_id = 0;
+			uint32_t acquisition_id = 0;
 			XML_SCANF(plate_acquisition_id, "PlateAcquisition:%u.%u", &inner_plate_id, &acquisition_id);
 			if (inner_plate_id != plate_info.id)
 				return ErrorCode::ERR_PLATE_ID_NOT_MATCHED;
@@ -586,7 +592,7 @@ int32_t parse_ome_xml(const char* xml, size_t xml_size, OmeTiff* tiff_obj)
 	return ErrorCode::STATUS_OK;
 }
 
-int32_t generate_ome_xml(char** xml, OmeTiff* tiff_obj, int32_t header_width, int32_t header_height)
+int32_t generate_ome_xml(string& xml, const OmeTiff* tiff_obj)
 {
 	tinyxml2::XMLDocument doc;
 	XMLDeclaration* bom = doc.NewDeclaration();
@@ -600,37 +606,37 @@ int32_t generate_ome_xml(char** xml, OmeTiff* tiff_obj, int32_t header_width, in
 	element_OME->SetAttribute("xsi:schemaLocation", "http://www.openmicroscopy.org/Schemas/OME/2016-06 http://www.openmicroscopy.org/Schemas/OME/2016-06/ome.xsd");
 	doc.InsertEndChild(element_OME);
 
-	XMLElement* element_bool_image = doc.NewElement("Image");
-	element_OME->InsertEndChild(element_bool_image);
-	element_bool_image->SetAttribute("ID", "Image:0");
-	XMLElement* element_Pixels = doc.NewElement("Pixels");
-	element_bool_image->InsertEndChild(element_Pixels);
-	element_Pixels->SetAttribute("ID", "Pixels:0");
-	element_Pixels->SetAttribute("DimensionOrder", "XYCZT");
-	element_Pixels->SetAttribute("Type", "uint8");
-	element_Pixels->SetAttribute("SizeC", 1);
-	element_Pixels->SetAttribute("SizeT", 1);
-	element_Pixels->SetAttribute("SizeX", header_width);
-	element_Pixels->SetAttribute("SizeY", header_height);
-	element_Pixels->SetAttribute("SizeZ", 1);
-	element_Pixels->SetAttribute("SizeS", 1);
-	element_Pixels->SetAttribute("TileWidth", header_width);
-	element_Pixels->SetAttribute("TileHeight", header_height);
-	XMLElement* element_channel = doc.NewElement("Channel");
-	element_Pixels->InsertEndChild(element_channel);
-	element_channel->SetAttribute("ID", "Channel:0");
-	element_channel->SetAttribute("SamplesPerPixel", 1);
-	XMLElement* element_TiffData = doc.NewElement("TiffData");
-	element_Pixels->InsertEndChild(element_TiffData);
-	element_TiffData->SetAttribute("FirstC", 0);
-	element_TiffData->SetAttribute("FirstT", 0);
-	element_TiffData->SetAttribute("FirstZ", 0);
-	element_TiffData->SetAttribute("FirstS", 0);
-	element_TiffData->SetAttribute("IFD", 0);
-	XMLElement* element_UUID = doc.NewElement("UUID");
+	XMLElement* element_boot_Image = doc.NewElement("Image");
+	element_OME->InsertEndChild(element_boot_Image);
+	element_boot_Image->SetAttribute("ID", "Image:0");
+	XMLElement* element_boot_Pixels = doc.NewElement("Pixels");
+	element_boot_Image->InsertEndChild(element_boot_Pixels);
+	element_boot_Pixels->SetAttribute("ID", "Pixels:0");
+	element_boot_Pixels->SetAttribute("DimensionOrder", "XYCZT");
+	element_boot_Pixels->SetAttribute("Type", "uint8");
+	element_boot_Pixels->SetAttribute("SizeC", 1);
+	element_boot_Pixels->SetAttribute("SizeT", 1);
+	element_boot_Pixels->SetAttribute("SizeX", HEADERIMAGESIZE);
+	element_boot_Pixels->SetAttribute("SizeY", HEADERIMAGESIZE);
+	element_boot_Pixels->SetAttribute("SizeZ", 1);
+	element_boot_Pixels->SetAttribute("SizeS", 1);
+	element_boot_Pixels->SetAttribute("TileWidth", HEADERIMAGESIZE);
+	element_boot_Pixels->SetAttribute("TileHeight", HEADERIMAGESIZE);
+	XMLElement* element_boot_channel = doc.NewElement("Channel");
+	element_boot_Pixels->InsertEndChild(element_boot_channel);
+	element_boot_channel->SetAttribute("ID", "Channel:0");
+	element_boot_channel->SetAttribute("SamplesPerPixel", 1);
+	XMLElement* element_boot_TiffData = doc.NewElement("TiffData");
+	element_boot_Pixels->InsertEndChild(element_boot_TiffData);
+	element_boot_TiffData->SetAttribute("FirstC", 0);
+	element_boot_TiffData->SetAttribute("FirstT", 0);
+	element_boot_TiffData->SetAttribute("FirstZ", 0);
+	element_boot_TiffData->SetAttribute("FirstS", 0);
+	element_boot_TiffData->SetAttribute("IFD", 0);
+	XMLElement* element_boot_UUID = doc.NewElement("UUID");
 	string file_name = tiff_obj->GetUTF8FileName();
-	element_UUID->SetAttribute("FileName", file_name.c_str());
-	element_TiffData->InsertEndChild(element_UUID);
+	element_boot_UUID->SetAttribute("FileName", file_name.c_str());
+	element_boot_TiffData->InsertEndChild(element_boot_UUID);
 
 	int32_t status = ErrorCode::STATUS_OK;
 	char tmp[_MAX_PATH] = { 0 };
@@ -756,6 +762,7 @@ int32_t generate_ome_xml(char** xml, OmeTiff* tiff_obj, int32_t header_width, in
 			string channel_name_str = p.u8string();
 			element_Channel->SetAttribute("Name", channel_name_str.c_str());
 			element_Channel->SetAttribute("SamplesPerPixel", channel_info.sample_per_pixel);
+			element_Channel->SetAttribute("BinSize", channel_info.bin_size);
 		}
 
 		bool is_ordered = false;
@@ -836,11 +843,13 @@ int32_t generate_ome_xml(char** xml, OmeTiff* tiff_obj, int32_t header_width, in
 
 	XMLPrinter printer;
 	doc.Print(&printer);
-	int dataSize = printer.CStrSize();
-	*xml = (char*)calloc(dataSize, 1);
-	if (*xml == nullptr)
-		return ErrorCode::TIFF_ERR_ALLOC_MEMORY_FAILED;
-	memcpy(*xml, (char*)printer.CStr(), dataSize);
+	//int dataSize = printer.CStrSize();
+	//*xml = (char*)calloc(dataSize, 1);
+	//if (*xml == nullptr)
+	//	return ErrorCode::TIFF_ERR_ALLOC_MEMORY_FAILED;
+	//memcpy(*xml, printer.CStr(), dataSize);
+
+	xml = printer.CStr();
 
 	return ErrorCode::STATUS_OK;
 }

@@ -87,6 +87,15 @@ namespace ImageReviewTool
             ERR_BLOCK_SIZE_NOT_MATCHED = -147,
             ERR_TIFF_DATA_HAS_NO_UUID = -148,
             ERR_WELL_SAMPLE_REF_ID_EMPTY = -149,
+            ERR_TIFF_DATA_CANNOT_PREDICT = -150,
+            ERR_WELL_SAMPLE_ID_EXIST = -151,
+            ERR_PARAMETER_INVALID = -152,
+            ERR_SCANF_ASSIGNED_ERROR = -153,
+            ERR_CHANNEL_NOT_EXIST = -154,
+            ERR_REGION_NOT_EXIST = -155,
+            ERR_PLATE_ACQUISITION_NOT_EXIST = -156,
+            ERR_HORIZONTAL_ACC_FAILED = -157,
+            ERR_OME_XML_SIZE_ZERO = -158,
         };
 
         public enum DistanceUnit
@@ -168,10 +177,10 @@ namespace ImageReviewTool
         [StructLayout(LayoutKind.Sequential)]
         public struct OmeRect
         {
-            public int x;
-            public int y;
-            public int width;
-            public int height;
+            public uint x;
+            public uint y;
+            public uint width;
+            public uint height;
         };
 
         [StructLayout(LayoutKind.Sequential)]
@@ -233,12 +242,14 @@ namespace ImageReviewTool
         {
             private uint id;
             private uint samples_per_pixel;
+            private uint bin_size;
             [MarshalAs(UnmanagedType.ByValTStr, SizeConst = NAME_LEN)]
             private string name;
 
             //properties
             public uint Id { get => id; set => id = value; }
             public uint SamplesPerPixel { get => samples_per_pixel; set => samples_per_pixel = value; }
+            public uint BinSize { get => bin_size; set => bin_size = value; }
             public string Name { get => name; set => name = value; }
         };
 
@@ -298,7 +309,7 @@ namespace ImageReviewTool
             //properties
             public uint Id { get => id; set => id = value; }
             public float PixelPhysicalSizeX { get => pixel_physical_size_x; set => pixel_physical_size_x = value; }
-            public float PixelPhysicalSizeY { get => pixel_physical_size_y; set => pixel_physical_size_z = value; }
+            public float PixelPhysicalSizeY { get => pixel_physical_size_y; set => pixel_physical_size_y = value; }
             public float PixelPhysicalSizeZ { get => pixel_physical_size_z; set => pixel_physical_size_z = value; }
             public float TimeIncrement { get => time_increment; set => time_increment = value; }
             public DistanceUnit PixelPhysicalUnitX { get => pixel_physical_uint_x; set => pixel_physical_uint_x = value; }
@@ -392,10 +403,13 @@ namespace ImageReviewTool
         [DllImport(OmeTiffLibraryPath, EntryPoint = "ome_get_raw_data", CallingConvention = CallingConvention.Cdecl)]
         public static extern int ome_get_raw_data(int handle, FrameInfo frame_info, OmeRect src_rect, IntPtr image_data, uint stride = 0);
 
-        [DllImport(OmeTiffLibraryPath, EntryPoint = "ome_get_custom_tag", CallingConvention = CallingConvention.Cdecl)]
-        public static extern int ome_get_custom_tag(int handle, FrameInfo frame_info, ushort tag_id, uint tag_size, IntPtr tag_value);
+        [DllImport(OmeTiffLibraryPath, EntryPoint = "ome_get_raw_tile_data", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ome_get_raw_tile_data(int handle, FrameInfo frame_info, uint row, uint column, IntPtr image_data, uint stride = 0);
 
-        [DllImport(OmeTiffLibraryPath, EntryPoint = "ome_set_custom_tag", CallingConvention = CallingConvention.Cdecl)]
-        public static extern int ome_set_custom_tag(int handle, FrameInfo frame_info, ushort tag_id, TiffTagDataType tag_type, uint tag_count, IntPtr tag_value);
+        [DllImport(OmeTiffLibraryPath, EntryPoint = "ome_get_tag", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ome_get_tag(int handle, FrameInfo frame_info, ushort tag_id, ref uint tag_size, IntPtr tag_value);
+
+        [DllImport(OmeTiffLibraryPath, EntryPoint = "ome_set_tag", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ome_set_tag(int handle, FrameInfo frame_info, ushort tag_id, TiffTagDataType tag_type, uint tag_count, IntPtr tag_value);
     }
 }

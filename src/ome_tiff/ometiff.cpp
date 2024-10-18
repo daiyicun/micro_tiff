@@ -1,4 +1,3 @@
-#include "..\micro_tiff\micro_tiff.h"
 //#include "jpeg_handler.h"
 #include "ometiff.h"
 #include "ometiff_info.h"
@@ -30,10 +29,6 @@ OmeTiff::OmeTiff(void )
 
 OmeTiff::~OmeTiff(void)
 {
-	if (_open_mode != OpenMode::READ_ONLY_MODE) {
-		RewriteOMEHeader();
-	}
-
 	for (auto it = _plates.begin(); it != _plates.end(); it++)
 	{
 		if (it->second)
@@ -62,15 +57,12 @@ OmeTiff::~OmeTiff(void)
 	}
 }
 
-int32_t OmeTiff::Init(const wchar_t* file_name, OpenMode mode, CompressionMode cm)
+int32_t OmeTiff::Init(const wchar_t* file_name, const OpenMode mode, const CompressionMode cm)
 {
 	_open_mode = mode;
 	_compression_mode = cm;
 
-	wchar_t full_file_name[_MAX_PATH] = L"";
-	wchar_t* __ = _wfullpath(full_file_name, file_name, _MAX_PATH);
-
-	fs::path p{ full_file_name };
+	fs::path p{ file_name };
 	string extension = p.extension().u8string();
 	_tiff_header_ext = extension;
 
@@ -96,55 +88,43 @@ int32_t OmeTiff::Init(const wchar_t* file_name, OpenMode mode, CompressionMode c
 
 	_tiff_file_full_name = p.wstring();
 
+	FrameInfo header_frame = { 0 };
+	header_frame.plate_id = UINT32_MAX;
+
+	TiffContainer* header_container = nullptr;
+	uint32_t header_ifd_no = 0;
+	int32_t result = GetRawContainer(header_frame, &header_container, header_ifd_no, _open_mode == OpenMode::READ_ONLY_MODE);
+	if (result != ErrorCode::STATUS_OK)
+		return result;
+
 	if (_open_mode != OpenMode::CREATE_MODE)
 	{
-		int32_t hdl = micro_tiff_Open(_tiff_file_full_name.c_str(), ((_open_mode != OpenMode::READ_ONLY_MODE) * OPENFLAG_WRITE));
-		if (hdl < 0) return hdl;
-		uint16_t type = 0;
-		uint32_t size = 0;
-		int32_t status = micro_tiff_GetTagInfo(hdl, 0, TIFFTAG_IMAGEDESCRIPTION, type, size);
-		if (status == ErrorCode::TIFF_ERR_TAG_NOT_FOUND && strcmp(extension.c_str(), "tid") == 0)
-		{
-			wchar_t new_file_name[_MAX_PATH] = { 0 };
-			wcscpy_s(new_file_name, full_file_name);
-			bool num_flag = false;
-			for (size_t i = wcslen(new_file_name); i > 0; --i)
-			{
-				if (num_flag && new_file_name[i] == L'_')
-				{
-					wchar_t ex[] = L".btf";
-					wmemcpy(&new_file_name[i], ex, wcslen(ex));
-					return Init(new_file_name, mode, cm);
-				}
-				if (new_file_name[i] >= '0' && new_file_name[i] <= '9')
-					num_flag = true;
-			}
-			micro_tiff_Close(hdl);
-			return ErrorCode::ERR_FILE_PATH_ERROR;
-		}
-		if (status == ErrorCode::STATUS_OK && size > 0)
-		{
-			unique_ptr<uint8_t[]> auto_xml = make_unique<uint8_t[]>(size);
-			uint8_t* xml = auto_xml.get();
-			if (xml == nullptr)
-				return ErrorCode::ERR_BUFFER_IS_NULL;
-			status = micro_tiff_GetTag(hdl, 0, TIFFTAG_IMAGEDESCRIPTION, xml);
-			if (status != ErrorCode::STATUS_OK)
-			{
-				micro_tiff_Close(hdl);
-				return ErrorCode::ERR_GET_OMEXML_FAILED;
-			}
-			_is_in_parsing = true;
-			status = parse_ome_xml((char*)xml, size, this);
-			_is_in_parsing = false;			
-		}
-		micro_tiff_Close(hdl);
-		return status;
+		uint32_t tag_size;
+		int32_t result = header_container->GetTag(header_ifd_no, TIFFTAG_IMAGEDESCRIPTION, tag_size, nullptr);
+		if (result != ErrorCode::STATUS_OK)
+			return result;
+
+		if (tag_size == 0)
+			return ErrorCode::ERR_OME_XML_SIZE_ZERO;
+
+		unique_ptr<uint8_t[]> auto_xml = make_unique<uint8_t[]>(tag_size + 1);
+		uint8_t* xml = auto_xml.get();
+		if (xml == nullptr)
+			return ErrorCode::ERR_BUFFER_IS_NULL;
+
+		result = header_container->GetTag(header_ifd_no, TIFFTAG_IMAGEDESCRIPTION, tag_size, xml);
+		if (result != ErrorCode::STATUS_OK)
+			return result;
+
+		_is_in_parsing = true;
+		result = parse_ome_xml((char*)xml, this);
+		_is_in_parsing = false;
 	}
-	return ErrorCode::STATUS_OK;
+
+	return result;
 }
 
-int32_t OmeTiff::SaveTileData(void* image_data, uint32_t stride, FrameInfo frame, uint32_t row, uint32_t column)
+int32_t OmeTiff::SaveTileData(FrameInfo frame, uint32_t row, uint32_t column, void* image_data, uint32_t stride)
 {
 	CHECK_OPENMODE(_open_mode);
 	TiffContainer* container = nullptr;
@@ -153,7 +133,7 @@ int32_t OmeTiff::SaveTileData(void* image_data, uint32_t stride, FrameInfo frame
 	if (status != ErrorCode::STATUS_OK)
 		return status;
 
-	return container->SaveTileData(image_data, stride, ifd_no, row, column);
+	return container->SaveTileData(ifd_no, row, column, image_data, stride);
 }
 
 int32_t OmeTiff::PurgeFrame(FrameInfo frame)
@@ -168,7 +148,7 @@ int32_t OmeTiff::PurgeFrame(FrameInfo frame)
 	return container->CloseIFD(ifd_no);
 }
 
-int32_t OmeTiff::LoadRawData(FrameInfo frame, OmeSize dst_size, OmeRect src_rect, void* buffer, uint32_t stride)
+int32_t OmeTiff::LoadRawData(FrameInfo frame, OmeSize dst_size, OmeRect src_rect, void* image_data, uint32_t stride)
 {
 	TiffContainer* container = nullptr;
 	uint32_t ifd_no;
@@ -176,13 +156,32 @@ int32_t OmeTiff::LoadRawData(FrameInfo frame, OmeSize dst_size, OmeRect src_rect
 	if (status != ErrorCode::STATUS_OK)
 		return status;
 
-	return container->LoadRectData(ifd_no, dst_size, src_rect, buffer, stride);
+	return container->LoadRectData(ifd_no, dst_size, src_rect, image_data, stride);
+}
+
+int32_t OmeTiff::LoadRawData(FrameInfo frame, uint32_t row, uint32_t column, void* image_data, uint32_t stride)
+{
+	TiffContainer* container = nullptr;
+	uint32_t ifd_no;
+	int32_t status = GetRawContainer(frame, &container, ifd_no, true);
+	if (status != ErrorCode::STATUS_OK)
+		return status;
+
+	return container->LoadTileData(ifd_no, row, column, image_data, stride);
 }
 
 int32_t OmeTiff::AddPlate(PlateInfo& plate_info)
 {
 	if (!_is_in_parsing)
 		CHECK_OPENMODE(_open_mode);
+
+	if (plate_info.row_size < 1)
+		return ErrorCode::ERR_PLATE_ROW_SIZE;
+	if (plate_info.column_size < 1)
+		return ErrorCode::ERR_PLATE_COLUMN_SIZE;
+
+	if (plate_info.width < 0 || plate_info.height < 0)
+		return ErrorCode::ERR_PLATE_PHYSICAL_SIZE;
 
 	uint32_t count = (uint32_t)_plates.size();
 	if (count > 0)
@@ -215,6 +214,9 @@ int32_t OmeTiff::AddWell(uint32_t plate_id, WellInfo& well_info)
 {
 	if (!_is_in_parsing)
 		CHECK_OPENMODE(_open_mode);
+
+	if (well_info.width < 0 || well_info.height < 0)
+		return ErrorCode::ERR_WELL_PHYSICAL_SIZE;
 
 	auto it = _plates.find(plate_id);
 	if (it == _plates.end())
@@ -250,6 +252,9 @@ int32_t OmeTiff::AddScan(uint32_t plate_id, ScanInfo& scan_info)
 {
 	if (!_is_in_parsing)
 		CHECK_OPENMODE(_open_mode);
+
+	if (scan_info.tile_pixel_size_width < 16 || scan_info.tile_pixel_size_height < 16)
+		return ErrorCode::ERR_SCAN_TILE_SIZE;
 
 	auto it = _plates.find(plate_id);
 	if (it == _plates.end())
@@ -297,6 +302,11 @@ int32_t OmeTiff::AddChannel(uint32_t plate_id, uint32_t scan_id, ChannelInfo& ch
 	if (!_is_in_parsing)
 		CHECK_OPENMODE(_open_mode);
 
+	if (channel_info.bin_size < 1)
+		return ErrorCode::ERR_CHANNEL_BIN_SIZE;
+	if (channel_info.sample_per_pixel != 1 && channel_info.sample_per_pixel != 3)
+		return ErrorCode::ERR_CHANNEL_SAMPLES_PER_PIXEL;
+
 	auto it_plate = _plates.find(plate_id);
 	if (it_plate == _plates.end())
 		return ErrorCode::ERR_PLATE_NOT_EXIST;
@@ -313,7 +323,8 @@ int32_t OmeTiff::AddChannel(uint32_t plate_id, uint32_t scan_id, ChannelInfo& ch
 
 	for (auto it_ref = plate_acquisition._well_sample_ref.begin(); it_ref != plate_acquisition._well_sample_ref.end(); it_ref++)
 	{
-		uint32_t well_id = 0, well_sample_id = 0;
+		uint32_t well_id = 0;
+		uint32_t well_sample_id = 0;
 		int result_sscanf = sscanf_s(it_ref->second.c_str(), "WellSample:%*u.%u.%u", &well_id, &well_sample_id);
 		if (result_sscanf <= 0)
 			return ErrorCode::ERR_SCANF_ASSIGNED_ERROR;
@@ -390,7 +401,8 @@ int32_t OmeTiff::RemoveChannel(uint32_t plate_id, uint32_t scan_id, uint32_t cha
 
 	for (auto it_ref = plate_acquisition._well_sample_ref.begin(); it_ref != plate_acquisition._well_sample_ref.end(); it_ref++)
 	{
-		uint32_t well_id = 0, well_sample_id = 0;
+		uint32_t well_id = 0;
+		uint32_t well_sample_id = 0;
 		int result_sscanf = sscanf_s(it_ref->second.c_str(), "WellSample:%*u.%u.%u", &well_id, &well_sample_id);
 		if (result_sscanf <= 0)
 			return ErrorCode::ERR_SCANF_ASSIGNED_ERROR;
@@ -424,7 +436,7 @@ int32_t OmeTiff::RemoveChannel(uint32_t plate_id, uint32_t scan_id, uint32_t cha
 	return it_scan->second.remove_channel(channel_id);
 }
 
-int32_t OmeTiff::AddScanRegion(uint32_t plate_id, uint32_t scan_id, uint32_t well_id, ScanRegionInfo& scan_region_info, string well_sample_id, string image_ref_id)
+int32_t OmeTiff::AddScanRegion(uint32_t plate_id, uint32_t scan_id, uint32_t well_id, ScanRegionInfo& scan_region_info, const string& well_sample_id, const string& image_ref_id)
 {
 	if (!_is_in_parsing)
 		CHECK_OPENMODE(_open_mode);
@@ -436,6 +448,9 @@ int32_t OmeTiff::AddScanRegion(uint32_t plate_id, uint32_t scan_id, uint32_t wel
 	auto it_scan = it_plate->second->_scans_array.find(scan_id);
 	if (it_scan == it_plate->second->_scans_array.end())
 		return ErrorCode::ERR_SCAN_NOT_EXIST;
+
+	if (scan_region_info.pixel_size_x < it_scan->second._info.tile_pixel_size_width || scan_region_info.pixel_size_y < it_scan->second._info.tile_pixel_size_height)
+		return ErrorCode::ERR_SCAN_TILE_SIZE;
 
 	auto it_plate_acquisition = it_plate->second->_plate_acquisition_array.find(scan_id);
 	if (it_plate_acquisition == it_plate->second->_plate_acquisition_array.end())
@@ -452,7 +467,7 @@ int32_t OmeTiff::AddScanRegion(uint32_t plate_id, uint32_t scan_id, uint32_t wel
 	if (_is_in_parsing)
 	{
 		if (well_sample_id.empty() || image_ref_id.empty())
-			ErrorCode::ERR_PARAMETER_NOT_VALIE;
+			return ErrorCode::ERR_PARAMETER_INVALID;
 
 		result = it_well->second.add_well_sample(scan_region_info, well_sample_id, image_ref_id);
 		if (result != ErrorCode::STATUS_OK)
@@ -578,7 +593,7 @@ int32_t OmeTiff::GetScanRegionsSize(uint32_t plate_id, uint32_t scan_id, uint32_
 	return count;
 }
 
-string OmeTiff::GetUTF8FileName()
+string OmeTiff::GetUTF8FileName() const
 {
 	fs::path p = _tiff_file_name;
 	string str_utf8 = p.make_preferred().u8string();
@@ -586,34 +601,28 @@ string OmeTiff::GetUTF8FileName()
 	return utf8_file_name;
 }
 
-string OmeTiff::GetFullPathWithFileName(string utf8_file_name)
+string OmeTiff::GetFullPathWithFileName(string& utf8_file_name)
 {
 	fs::path p = _tiff_file_dir;
 	p /= utf8_file_name;
 	return p.make_preferred().u8string();
 }
 
-int32_t OmeTiff::RewriteOMEHeader()
+int32_t OmeTiff::CreateOMEHeader()
 {
-	int32_t status = ErrorCode::STATUS_OK;
-	int32_t hdl = micro_tiff_Open(_tiff_file_full_name.c_str(), OPENFLAG_WRITE | OPENFLAG_CREATE | OPENFLAG_BIGTIFF);
-	if (hdl < 0)
-		return hdl;
+	if (_open_mode == OpenMode::READ_ONLY_MODE)
+		return ErrorCode::TIFF_ERR_WRONG_OPEN_MODE;
 
-	ImageInfo info = { 0 };
-	info.bits_per_sample = 8;
-	info.compression = COMPRESSION_NONE;
-	info.planarconfig = PLANARCONFIG_CONTIG;
-	info.photometric = PHOTOMETRIC_MINISBLACK;
-	info.image_byte_count = 1;
-	info.samples_per_pixel = 1;
-	info.block_width = 256;
-	info.block_height = 256;
-	info.image_width = 256;
-	info.image_height = 256;
+	FrameInfo header_frame = { 0 };
+	header_frame.plate_id = UINT32_MAX;
 
-	uint32_t buf_size = info.image_width * info.image_height;
+	TiffContainer* header_container = nullptr;
+	uint32_t header_ifd_no = 0;
+	int32_t status = GetRawContainer(header_frame, &header_container, header_ifd_no, true);
+	if (status != ErrorCode::STATUS_OK)
+		return status;
 
+	uint32_t buf_size = HEADERIMAGESIZE * HEADERIMAGESIZE;
 	unique_ptr<uint8_t[]> auto_buf = make_unique<uint8_t[]>(buf_size);
 
 	void* buf = auto_buf.get();
@@ -621,47 +630,20 @@ int32_t OmeTiff::RewriteOMEHeader()
 		return ErrorCode::TIFF_ERR_ALLOC_MEMORY_FAILED;
 	}
 
-	char* xml_data = nullptr;
-	uint32_t xml_size = 0;
-
-	do {
-		status = generate_ome_xml(&xml_data, this, info.image_width, info.image_height);
-		if (status < 0) {
-			if (xml_data != nullptr)
-				free(xml_data);
-			break;
-		}
-		xml_size = (uint32_t)strlen(xml_data) + 1;
-	} while (0);
-
+	status = header_container->SaveTileData(header_ifd_no, 0, 0, buf, HEADERIMAGESIZE);
 	if (status != ErrorCode::STATUS_OK)
 		return status;
 
-	do {
-		int32_t ifd_no = micro_tiff_CreateIFD(hdl, info);
-		if (ifd_no < 0) {
-			status = ifd_no;
-			break;
-		}
-		status = micro_tiff_SetTag(hdl, ifd_no, TIFFTAG_IMAGEDESCRIPTION, TagDataType::TIFF_ASCII, xml_size, xml_data);
-		if (status != ErrorCode::STATUS_OK) {
-			break;
-		}
-		status = micro_tiff_SaveBlock(hdl, ifd_no, 0, buf_size, buf);
-		if (status != ErrorCode::STATUS_OK) {
-			break;
-		}
-		micro_tiff_CloseIFD(hdl, (int32_t)ifd_no);
-		status = micro_tiff_Close(hdl);
-		if (status != ErrorCode::STATUS_OK) {
-			break;
-		}
-	} while (0);
-	free(xml_data);
+	string xml_data;
+	status = generate_ome_xml(xml_data, this);
+	if (status != ErrorCode::STATUS_OK)
+		return status;
+
+	status = header_container->SetTag(header_ifd_no, TIFFTAG_IMAGEDESCRIPTION, TagDataType::TIFF_ASCII, (uint32_t)xml_data.size(), (void*)xml_data.c_str());
 	return status;
 }
 
-int32_t OmeTiff::SetCustomTag(FrameInfo frame, uint16_t tag_id, uint16_t tag_type, uint32_t tag_count, void* tag_value)
+int32_t OmeTiff::SetTag(FrameInfo frame, uint16_t tag_id, uint16_t tag_type, uint32_t tag_count, void* tag_value)
 {
 	TiffContainer* container = nullptr;
 	uint32_t ifd_no;
@@ -669,10 +651,10 @@ int32_t OmeTiff::SetCustomTag(FrameInfo frame, uint16_t tag_id, uint16_t tag_typ
 	if (status != ErrorCode::STATUS_OK)
 		return status;
 
-	return container->SetCustomTag(ifd_no, tag_id, tag_type, tag_count, tag_value);
+	return container->SetTag(ifd_no, tag_id, tag_type, tag_count, tag_value);
 }
 
-int32_t OmeTiff::GetCustomTag(FrameInfo frame, uint16_t tag_id, uint32_t tag_size, void* tag_value)
+int32_t OmeTiff::GetTag(FrameInfo frame, uint16_t tag_id, uint32_t& tag_size, void* tag_value)
 {
 	TiffContainer* container = nullptr;
 	uint32_t ifd_no;
@@ -680,11 +662,46 @@ int32_t OmeTiff::GetCustomTag(FrameInfo frame, uint16_t tag_id, uint32_t tag_siz
 	if (status != ErrorCode::STATUS_OK)
 		return status;
 
-	return container->GetCustomTag(ifd_no, tag_id, tag_size, tag_value);
+	return container->GetTag(ifd_no, tag_id, tag_size, tag_value);
 }
 
 int32_t OmeTiff::GetRawContainer(FrameInfo frame, TiffContainer** container, uint32_t& ifd_no, bool is_read)
 {
+	if (frame.plate_id == UINT32_MAX)
+	{
+		fs::path p{ _tiff_file_full_name };
+		string utf8_container_file_name = p.u8string();
+
+		{
+			unique_lock<mutex> lock(_mutex_raw);
+			auto it_find = _raw_file_containers.find(utf8_container_file_name);
+			if (it_find == _raw_file_containers.end())
+			{
+				*container = new TiffContainer();
+				int32_t result = (*container)->Init(_open_mode, _tiff_file_full_name, 1);
+				if (result != ErrorCode::STATUS_OK)
+					return result;
+
+				if (!is_read)
+				{
+					int32_t created_ifd_no = (*container)->CreateIFD(HEADERIMAGESIZE, HEADERIMAGESIZE, HEADERIMAGESIZE, HEADERIMAGESIZE,
+						PixelType::PIXEL_UINT8, 1, CompressionMode::COMPRESSIONMODE_LZW);
+
+					if (created_ifd_no != 0)
+						return ErrorCode::ERR_BOOT_IFD_ALREADY_EXIST;
+				}
+				_raw_file_containers.insert(make_pair(utf8_container_file_name, *container));
+			}
+			else
+			{
+				*container = it_find->second;
+			}
+		}
+
+		ifd_no = 0;		
+		return ErrorCode::STATUS_OK;
+	}
+
 	auto it_plate = _plates.find(frame.plate_id);
 	if (it_plate == _plates.end())
 		return ErrorCode::ERR_PLATE_NOT_EXIST;
@@ -699,6 +716,8 @@ int32_t OmeTiff::GetRawContainer(FrameInfo frame, TiffContainer** container, uin
 	if (it_channel == scan._channel_array.end())
 		return ErrorCode::ERR_CHANNEL_NOT_EXIST;
 
+	ChannelInfo channel_info = it_channel->second._info;
+
 	auto it_plate_acquisition = it_plate->second->_plate_acquisition_array.find(frame.scan_id);
 	if (it_plate_acquisition == it_plate->second->_plate_acquisition_array.end())
 		return ErrorCode::ERR_PLATE_ACQUISITION_NOT_EXIST;
@@ -711,7 +730,8 @@ int32_t OmeTiff::GetRawContainer(FrameInfo frame, TiffContainer** container, uin
 
 	string well_sample_ref_id = it_well_sample_ref->second;
 
-	uint32_t well_id = 0, well_sample_id = 0;
+	uint32_t well_id = 0;
+	uint32_t well_sample_id = 0;
 	int result_sscanf = sscanf_s(well_sample_ref_id.c_str(), "WellSample:%*u.%u.%u", &well_id, &well_sample_id);
 	if (result_sscanf <= 0)
 		return ErrorCode::ERR_SCANF_ASSIGNED_ERROR;
@@ -727,14 +747,6 @@ int32_t OmeTiff::GetRawContainer(FrameInfo frame, TiffContainer** container, uin
 		return ErrorCode::ERR_WELL_SAMPLE_NOT_EXIST;
 
 	WellSample well_sample = it_well_sample->second;
-
-	ContainerInfo info = { 0 };
-	info.tile_pixel_width = scan._info.tile_pixel_size_width;
-	info.tile_pixel_height = scan._info.tile_pixel_size_height;
-	info.samples_per_pixel = it_channel->second._info.sample_per_pixel;
-	info.pixel_type = scan._info.pixel_type;
-	info.open_mode = _open_mode;
-	info.compress_mode = _compression_mode;
 
 	uint32_t image_id;
 	result_sscanf = sscanf_s(well_sample.image_ref_id.c_str(), "Image:%u", &image_id);
@@ -769,7 +781,7 @@ int32_t OmeTiff::GetRawContainer(FrameInfo frame, TiffContainer** container, uin
 			if (it_find == _raw_file_containers.end())
 			{
 				*container = new TiffContainer();
-				result = (*container)->Init(info, container_full_path);
+				result = (*container)->Init(_open_mode, container_full_path, channel_info.bin_size);
 				if (result != ErrorCode::STATUS_OK)
 					return result;
 				_raw_file_containers.insert(make_pair(utf8_container_file_name, *container));
@@ -785,12 +797,13 @@ int32_t OmeTiff::GetRawContainer(FrameInfo frame, TiffContainer** container, uin
 		if (result != ErrorCode::STATUS_OK)
 			return result;
 
-		int32_t created_ifd_no = (*container)->CreateIFD(scan_region_info.pixel_size_x, scan_region_info.pixel_size_y);
+		int32_t created_ifd_no = (*container)->CreateIFD(scan_region_info.pixel_size_x * channel_info.bin_size, scan_region_info.pixel_size_y,
+			scan._info.tile_pixel_size_width * channel_info.bin_size, scan._info.tile_pixel_size_height, 
+			scan._info.pixel_type, (uint16_t)it_channel->second._info.sample_per_pixel, _compression_mode);
 		if (created_ifd_no < 0)
 			return created_ifd_no;
 
 		ifd_no = created_ifd_no;
-		TiffData tiff_data;
 		tiff_data.FirstC = frame.c_id;
 		tiff_data.FirstT = frame.t_id;
 		tiff_data.FirstZ = frame.z_id;
@@ -813,7 +826,7 @@ int32_t OmeTiff::GetRawContainer(FrameInfo frame, TiffContainer** container, uin
 			if (it_find == _raw_file_containers.end())
 			{
 				*container = new TiffContainer();
-				result = (*container)->Init(info, container_full_path);
+				result = (*container)->Init(_open_mode, container_full_path, channel_info.bin_size);
 				if (result != ErrorCode::STATUS_OK)
 					return result;
 				_raw_file_containers.insert(make_pair(tiff_data.FileName, *container));

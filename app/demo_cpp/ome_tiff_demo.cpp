@@ -6,7 +6,7 @@
 #include <filesystem>
 #include "..\..\src\ome_tiff\ome_tiff_library.h"
 
-int32_t ome_read_example()
+int32_t ome_read_example_by_tile(uint32_t row_index, uint32_t column_index)
 {
 	int32_t hdl = ome_open_file(L"ome_read.tif", ome::OpenMode::READ_ONLY_MODE);
 	if (hdl < 0)
@@ -17,7 +17,7 @@ int32_t ome_read_example()
 	ome::PlateInfo* plate_infos = auto_plate_infos.get();
 	int32_t result = ome_get_plates(hdl, plate_infos);
 	if (result != 0)
-		return result;
+		goto END;
 
 	for (int32_t p = 0; p < plate_size; p++)
 	{
@@ -28,14 +28,14 @@ int32_t ome_read_example()
 		ome::WellInfo* well_infos = auto_well_infos.get();
 		result = ome_get_wells(hdl, plate_id, well_infos);
 		if (result != 0)
-			return result;
+			goto END;
 
 		int32_t scan_size = ome_get_scans_num(hdl, plate_id);
 		std::unique_ptr<ome::ScanInfo[]> auto_scan_infos = std::make_unique<ome::ScanInfo[]>(scan_size);
 		ome::ScanInfo* scan_infos = auto_scan_infos.get();
 		result = ome_get_scans(hdl, plate_id, scan_infos);
 		if (result != 0)
-			return result;
+			goto END;
 
 		for (int32_t s = 0; s < scan_size; s++)
 		{
@@ -47,7 +47,7 @@ int32_t ome_read_example()
 			ome::ChannelInfo* channel_infos = auto_channel_infos.get();
 			result = ome_get_channels(hdl, plate_id, scan_id, channel_infos);
 			if (result != 0)
-				return result;
+				goto END;
 
 			for (int32_t w = 0; w < well_size; w++)
 			{
@@ -58,7 +58,7 @@ int32_t ome_read_example()
 				ome::ScanRegionInfo* scan_region_infos = auto_scan_region_infos.get();
 				result = ome_get_scan_regions(hdl, plate_id, scan_id, well_id, scan_region_infos);
 				if (result != 0)
-					return result;
+					goto END;
 
 				for (int32_t r = 0; r < scan_region_size; r++)
 				{
@@ -68,6 +68,12 @@ int32_t ome_read_example()
 					for (int32_t c = 0; c < channel_size; c++)
 					{
 						ome::ChannelInfo channel_info = channel_infos[c];
+
+						uint32_t image_stride = scan_info.tile_pixel_size_width * channel_info.sample_per_pixel * channel_info.bin_size * ((scan_info.significant_bits + 7) / 8);
+
+						std::unique_ptr<uint8_t[]> auto_image_data = std::make_unique<uint8_t[]>(image_stride * scan_info.tile_pixel_size_height);
+						uint8_t* image_data = auto_image_data.get();
+
 						for (uint32_t t = 0; t < scan_region_info.size_t; t++)
 						{
 							for (uint32_t z = 0; z < scan_region_info.pixel_size_z; z++)
@@ -80,22 +86,9 @@ int32_t ome_read_example()
 								frame_info.t_id = t;
 								frame_info.z_id = z;
 
-								ome::OmeRect whole_frame_rect = { 0 };
-								whole_frame_rect.x = 0;
-								whole_frame_rect.y = 0;
-								whole_frame_rect.width = scan_region_info.pixel_size_x;
-								whole_frame_rect.height = scan_region_info.pixel_size_y;
-
-								uint32_t image_stride = scan_region_info.pixel_size_x * channel_info.sample_per_pixel * ((scan_info.significant_bits + 7) / 8);
-
-								std::unique_ptr<uint8_t[]> auto_image_data = std::make_unique<uint8_t[]>(image_stride * scan_region_info.pixel_size_y);
-								uint8_t* image_data = auto_image_data.get();
-
-								result = ome_get_raw_data(hdl, frame_info, whole_frame_rect, image_data);
+								result = ome_get_raw_tile_data(hdl, frame_info, row_index, column_index, image_data, image_stride);
 								if (result != 0)
-									return result;
-
-
+									goto END;
 							}
 						}
 					}
@@ -105,8 +98,106 @@ int32_t ome_read_example()
 		}
 	}
 
+END:
 	ome_close_file(hdl);
-	return 0;
+	return result;
+}
+
+int32_t ome_read_example_by_rect(ome::OmeRect rect)
+{
+	int32_t hdl = ome_open_file(L"ome_read.tif", ome::OpenMode::READ_ONLY_MODE);
+	if (hdl < 0)
+		return hdl;
+
+	int32_t plate_size = ome_get_plates_num(hdl);
+	std::unique_ptr<ome::PlateInfo[]> auto_plate_infos = std::make_unique<ome::PlateInfo[]>(plate_size);
+	ome::PlateInfo* plate_infos = auto_plate_infos.get();
+	int32_t result = ome_get_plates(hdl, plate_infos);
+	if (result != 0)
+		goto END;
+
+	for (int32_t p = 0; p < plate_size; p++)
+	{
+		uint32_t plate_id = plate_infos[p].id;
+
+		int32_t well_size = ome_get_wells_num(hdl, plate_id);
+		std::unique_ptr<ome::WellInfo[]> auto_well_infos = std::make_unique<ome::WellInfo[]>(well_size);
+		ome::WellInfo* well_infos = auto_well_infos.get();
+		result = ome_get_wells(hdl, plate_id, well_infos);
+		if (result != 0)
+			goto END;
+
+		int32_t scan_size = ome_get_scans_num(hdl, plate_id);
+		std::unique_ptr<ome::ScanInfo[]> auto_scan_infos = std::make_unique<ome::ScanInfo[]>(scan_size);
+		ome::ScanInfo* scan_infos = auto_scan_infos.get();
+		result = ome_get_scans(hdl, plate_id, scan_infos);
+		if (result != 0)
+			goto END;
+
+		for (int32_t s = 0; s < scan_size; s++)
+		{
+			ome::ScanInfo scan_info = scan_infos[s];
+			uint32_t scan_id = scan_info.id;
+
+			int32_t channel_size = ome_get_channels_num(hdl, plate_id, scan_id);
+			std::unique_ptr<ome::ChannelInfo[]> auto_channel_infos = std::make_unique<ome::ChannelInfo[]>(channel_size);
+			ome::ChannelInfo* channel_infos = auto_channel_infos.get();
+			result = ome_get_channels(hdl, plate_id, scan_id, channel_infos);
+			if (result != 0)
+				goto END;
+
+			for (int32_t w = 0; w < well_size; w++)
+			{
+				uint32_t well_id = well_infos[w].id;
+
+				int32_t scan_region_size = ome_get_scan_regions_num(hdl, plate_id, scan_id, well_id);
+				std::unique_ptr<ome::ScanRegionInfo[]> auto_scan_region_infos = std::make_unique<ome::ScanRegionInfo[]>(scan_region_size);
+				ome::ScanRegionInfo* scan_region_infos = auto_scan_region_infos.get();
+				result = ome_get_scan_regions(hdl, plate_id, scan_id, well_id, scan_region_infos);
+				if (result != 0)
+					goto END;
+
+				for (int32_t r = 0; r < scan_region_size; r++)
+				{
+					ome::ScanRegionInfo scan_region_info = scan_region_infos[r];
+					uint32_t region_id = scan_region_info.id;
+
+					for (int32_t c = 0; c < channel_size; c++)
+					{
+						ome::ChannelInfo channel_info = channel_infos[c];
+
+						uint32_t image_stride = rect.width * channel_info.sample_per_pixel * channel_info.bin_size * ((scan_info.significant_bits + 7) / 8);
+
+						std::unique_ptr<uint8_t[]> auto_image_data = std::make_unique<uint8_t[]>(image_stride * rect.height);
+						uint8_t* image_data = auto_image_data.get();
+
+						for (uint32_t t = 0; t < scan_region_info.size_t; t++)
+						{
+							for (uint32_t z = 0; z < scan_region_info.pixel_size_z; z++)
+							{
+								ome::FrameInfo frame_info = { 0 };
+								frame_info.plate_id = plate_id;
+								frame_info.scan_id = scan_id;
+								frame_info.region_id = region_id;
+								frame_info.c_id = channel_info.id;
+								frame_info.t_id = t;
+								frame_info.z_id = z;
+								
+								result = ome_get_raw_data(hdl, frame_info, rect, image_data, image_stride);
+								if (result != 0)
+									goto END;
+							}
+						}
+					}
+
+				}
+			}
+		}
+	}
+
+END:
+	ome_close_file(hdl);
+	return result;
 }
 
 int32_t ome_write_example()
@@ -114,21 +205,6 @@ int32_t ome_write_example()
 	int32_t hdl_write = ome_open_file(L"ome_write.tif", ome::OpenMode::CREATE_MODE, ome::CompressionMode::COMPRESSIONMODE_LZW);
 	if (hdl_write < 0)
 		return hdl_write;
-
-	ome::PlateInfo plate_info{};
-	plate_info.id = 0;
-	plate_info.width = 115.5f;
-	plate_info.height = 70.3f;
-	plate_info.row_size = 1;
-	plate_info.column_size = 2;
-	plate_info.physicalsize_unit_x = ome::DistanceUnit::DISTANCE_MILLIMETER;
-	plate_info.physicalsize_unit_y = ome::DistanceUnit::DISTANCE_MILLIMETER;
-	std::filesystem::path p = std::filesystem::u8path("中文English混合Plate");
-	std::wstring plate_name = p.generic_wstring();
-	wmemcpy_s(plate_info.name, NAME_LEN, plate_name.c_str(), plate_name.size());
-	int32_t result_write = ome_add_plate(hdl_write, plate_info);
-	if (result_write != 0)
-		return result_write;
 
 	ome::ScanInfo scan_info{};
 	scan_info.id = 0;
@@ -146,9 +222,25 @@ int32_t ome_write_example()
 	scan_info.pixel_type = ome::PixelType::PIXEL_UINT8;
 	const char* dimension_order = "XYZTC";
 	memcpy_s(scan_info.dimension_order, NAME_LEN, dimension_order, strlen(dimension_order));
+
+	ome::PlateInfo plate_info{};
+	plate_info.id = 0;
+	plate_info.width = 115.5f;
+	plate_info.height = 70.3f;
+	plate_info.row_size = 1;
+	plate_info.column_size = 2;
+	plate_info.physicalsize_unit_x = ome::DistanceUnit::DISTANCE_MILLIMETER;
+	plate_info.physicalsize_unit_y = ome::DistanceUnit::DISTANCE_MILLIMETER;
+	std::filesystem::path p = std::filesystem::u8path("中文English混合Plate");
+	std::wstring plate_name = p.generic_wstring();
+	wmemcpy_s(plate_info.name, NAME_LEN, plate_name.c_str(), plate_name.size());
+	int32_t result_write = ome_add_plate(hdl_write, plate_info);
+	if (result_write != 0)
+		goto END;
+
 	result_write = ome_add_scan(hdl_write, plate_info.id, scan_info);
 	if (result_write != 0)
-		return result_write;
+		goto END;
 
 	for (uint32_t w = 0; w < 2; w++)
 	{
@@ -163,12 +255,12 @@ int32_t ome_write_example()
 
 		result_write = ome_add_well(hdl_write, plate_info.id, well_info);
 		if (result_write != 0)
-			return result_write;
+			goto END;
 
 		ome::ScanRegionInfo scan_region_info{};
 		scan_region_info.id = w;
-		scan_region_info.pixel_size_x = 512;
-		scan_region_info.pixel_size_y = 512;
+		scan_region_info.pixel_size_x = 680;
+		scan_region_info.pixel_size_y = 704;
 		scan_region_info.pixel_size_z = 10;
 		scan_region_info.size_t = 10;
 		scan_region_info.start_physical_x = 8619.1f + (float)w * 32000.0f;
@@ -180,19 +272,20 @@ int32_t ome_write_example()
 
 		result_write = ome_add_scan_region(hdl_write, plate_info.id, scan_info.id, well_info.id, scan_region_info);
 		if (result_write != 0)
-			return result_write;
+			goto END;
 
 		for (int32_t c = 0; c < 2; c++)
 		{
 			ome::ChannelInfo channel_info{};
 			channel_info.id = c;
 			channel_info.sample_per_pixel = 1;
+			channel_info.bin_size = 1;
 			std::filesystem::path p_c = std::filesystem::u8path("通道Channel-" + std::to_string(c));
 			std::wstring channel_name = p_c.generic_wstring();
 			wmemcpy_s(channel_info.name, NAME_LEN, channel_name.c_str(), channel_name.size());
 			result_write = ome_add_channel(hdl_write, plate_info.id, scan_info.id, channel_info);
 			if (result_write != 0)
-				return result_write;
+				goto END;
 
 			uint32_t tile_stride = scan_info.tile_pixel_size_width * channel_info.sample_per_pixel * ((scan_info.significant_bits + 7) / 8);
 			std::unique_ptr<uint8_t[]> auto_tile_data = std::make_unique<uint8_t[]>(tile_stride * scan_info.tile_pixel_size_height);
@@ -228,25 +321,14 @@ int32_t ome_write_example()
 
 					for (uint32_t index_column = 0; index_column < total_columns; index_column++)
 					{
-						uint32_t block_width = scan_info.tile_pixel_size_width;
-						if (index_column >= complete_columns)
-							block_width = scan_region_info.pixel_size_x - complete_columns * scan_info.tile_pixel_size_width;
-
 						for (uint32_t index_row = 0; index_row < total_rows; index_row++)
 						{
-							uint32_t block_height = scan_info.tile_pixel_size_height;
-							if (index_row >= complete_rows)
-								block_height = scan_region_info.pixel_size_y - complete_rows * scan_info.tile_pixel_size_height;
-
-							ome::OmeRect block_rect = { 0 };
-							block_rect.x = index_column * scan_info.tile_pixel_size_width;
-							block_rect.y = index_row * scan_info.tile_pixel_size_height;
-							block_rect.width = block_width;
-							block_rect.height = block_height;
-
-							result_write = ome_save_tile_data(hdl_write, tile_data, frame_info, index_row, index_column);
+							if (index_column >= complete_columns)
+								result_write = ome_save_tile_data(hdl_write, tile_data, frame_info, index_row, index_column, tile_stride);
+							else
+								result_write = ome_save_tile_data(hdl_write, tile_data, frame_info, index_row, index_column);
 							if (result_write != 0)
-								return result_write;
+								goto END;
 						}
 					}
 				}
@@ -254,15 +336,29 @@ int32_t ome_write_example()
 		}
 	}
 
+END:
 	ome_close_file(hdl_write);
-
-	return 0;
+	return result_write;
 }
 
 int main()
 {
-	//ome_read_example();
-	ome_write_example();
+	int32_t result = 0;
+	result = ome_read_example_by_tile(2, 2);
+	if (result != 0)
+		std::cout << "read example by tile error with ErrorCode : " << result << std::endl;
+	ome::OmeRect rect = { 0 };
+	rect.x = 50;
+	rect.y = 60;
+	rect.width = 600;
+	rect.height = 640;
+	result = ome_read_example_by_rect(rect);
+	if (result != 0)
+		std::cout << "read example by rectangle error with ErrorCode : " << result << std::endl;
+	result = ome_write_example();
+	if (result != 0)
+		std::cout << "write example error with ErrorCode : " << result << std::endl;
+	return result;
 }
 
 // Run program: Ctrl + F5 or Debug > Start Without Debugging menu

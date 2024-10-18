@@ -265,7 +265,7 @@ typedef int(*encodepfunc)(void* data, unsigned long size, unsigned short stride)
 //encode
 int horizontal_differencing(void* data, unsigned int height, unsigned int width, unsigned short data_bytes, unsigned short samples_per_pixel, bool is_big_endian)
 {
-	if (data == NULL) return -1;
+	if (data == nullptr) return -1;
 	encodepfunc func;
 	switch (data_bytes)
 	{
@@ -294,7 +294,7 @@ typedef int(*decodepfunc)(void* data, unsigned long size, unsigned short stride)
 //decode
 int horizontal_acc(void* data, unsigned int height, unsigned int width, unsigned short data_bytes, unsigned short samples_per_pixel, bool is_big_endian)
 {
-	if (data == NULL) return -1;
+	if (data == nullptr) return -1;
 	decodepfunc func;
 	switch (data_bytes)
 	{

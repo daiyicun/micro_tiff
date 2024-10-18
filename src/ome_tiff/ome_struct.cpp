@@ -27,7 +27,7 @@ namespace ome
 		return *this;
 	}
 
-	int32_t Well::add_well_sample(uint32_t plate_id, ScanRegionInfo scan_region_info, string& well_sample_id, string image_ref_id)
+	int32_t Well::add_well_sample(uint32_t plate_id, ScanRegionInfo& scan_region_info, string& well_sample_id, string& image_ref_id)
 	{
 		well_sample_id = "WellSample:" + to_string(plate_id) + "." + to_string(_info.id) + "." + to_string(_well_sample_id_index);
 		WellSample well_sample;
@@ -44,7 +44,7 @@ namespace ome
 		return ErrorCode::STATUS_OK;
 	}
 
-	int32_t Well::add_well_sample(ScanRegionInfo scan_region_info, string well_sample_id, string image_ref_id)
+	int32_t Well::add_well_sample(ScanRegionInfo& scan_region_info, const string& well_sample_id, const string& image_ref_id)
 	{
 		uint32_t well_sample_pure_id = 0;
 		int result_sscanf = sscanf_s(well_sample_id.c_str(), "WellSample:%*u.%*u.%u", &well_sample_pure_id);
@@ -92,7 +92,7 @@ namespace ome
 		return *this;
 	}
 
-	int32_t PlateAcquisition::add_well_sample_ref(uint32_t region_id, string well_sample_ref_id)
+	int32_t PlateAcquisition::add_well_sample_ref(uint32_t region_id, const string& well_sample_ref_id)
 	{
 		auto it = _well_sample_ref.find(region_id);
 		if (it != _well_sample_ref.end())
@@ -346,7 +346,7 @@ namespace ome
 		return ErrorCode::STATUS_OK;
 	}
 
-	uint32_t Pixels::get_t_size()
+	uint32_t Pixels::get_t_size() const
 	{
 		return _t_max + 1;
 	}

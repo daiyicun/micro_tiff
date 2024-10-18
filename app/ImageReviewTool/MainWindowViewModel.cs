@@ -35,17 +35,18 @@ namespace ImageReviewTool
         }
     }
 
-    internal class ImageData
+    public class ImageViewModelEx : ImageViewModel
     {
         internal byte[] OriginalData { get; set; } = null;
-        internal Rect Rect { get; }
-        internal int SamplesPerPixel { get; }
+        internal byte[] FlimSumData { get; set; } = null;
+        internal int BinSize { get; }
         internal OmeTiffLibraryWrapper.PixelType PixelType { get; }
         internal int DataBytes { get; }
-        internal ImageData(Rect rect, int samplesPerPixel, OmeTiffLibraryWrapper.PixelType pixelType)
+
+        internal ImageViewModelEx(Rect rect, int binSize, OmeTiffLibraryWrapper.PixelType pixelType)
         {
             Rect = rect;
-            SamplesPerPixel = samplesPerPixel;
+            BinSize = binSize;
             PixelType = pixelType;
             DataBytes = 1;
             switch (pixelType)
@@ -57,7 +58,7 @@ namespace ImageReviewTool
                     DataBytes = 1;
                     break;
                 }
-                case OmeTiffLibraryWrapper.PixelType.PIXEL_UINT16:                    
+                case OmeTiffLibraryWrapper.PixelType.PIXEL_UINT16:
                 case OmeTiffLibraryWrapper.PixelType.PIXEL_INT16:
                     DataBytes = 2;
                     break;
@@ -66,7 +67,26 @@ namespace ImageReviewTool
                     break;
             }
         }
+
+        internal bool Contains(Point point)
+        {
+            if (point.X >= Rect.X && point.X <= Rect.X + Rect.Width - 1 &&
+                point.Y >= Rect.Y && point.Y <= Rect.Y + Rect.Height - 1)
+                return true;
+            return false;
+        }
     }
+
+    public enum ImageChangeType
+    {
+        Plate,
+        Scan,
+        Channel,
+        Region,
+        Z,
+        T
+    }
+
 
     internal class FrameDetail
     {
@@ -74,11 +94,13 @@ namespace ImageReviewTool
         internal OmeTiffLibraryWrapper.ChannelInfo ChannelInfo { get; set; }
         internal OmeTiffLibraryWrapper.ScanRegionInfo ScanRegionInfo { get; set; }
         internal OmeTiffLibraryWrapper.FrameInfo FrameInfo { get; set; }
+        internal bool IsFrameSizeOrTileChanged { get; set; }
     }
 
     public class ScanDetail : BindableBase
     {
-        public event EventHandler LoadImageDataEvent;
+        //EventArg indicate if the image's size or tile is changed
+        public event EventHandler<ImageChangeType> LoadImageDataEvent;
 
         public OmeTiffLibraryWrapper.ScanInfo BaseInfo { get; }
 
@@ -97,7 +119,7 @@ namespace ImageReviewTool
             set
             {
                 if (SetProperty(ref _selectedChannel, value))
-                    LoadImageDataEvent?.Invoke(this, EventArgs.Empty);
+                    LoadImageDataEvent?.Invoke(this, ImageChangeType.Channel);
             }
         }
 
@@ -116,7 +138,7 @@ namespace ImageReviewTool
                     OnPropertyChanged(nameof(ZIndex));
                     _tIndex = Math.Min(_tIndex, _selectedScanRegion.Value.SizeT - 1);
                     OnPropertyChanged(nameof(TIndex));
-                    LoadImageDataEvent?.Invoke(this, EventArgs.Empty);
+                    LoadImageDataEvent?.Invoke(this, ImageChangeType.Region);
                 }
             }
         }
@@ -131,7 +153,7 @@ namespace ImageReviewTool
                     return;
                 var target = Math.Min(value, _selectedScanRegion.Value.PixelSizeZ - 1);
                 if (SetProperty(ref _zIndex, target))
-                    LoadImageDataEvent?.Invoke(this, EventArgs.Empty);
+                    LoadImageDataEvent?.Invoke(this, ImageChangeType.Z);
             }
         }
 
@@ -145,14 +167,15 @@ namespace ImageReviewTool
                     return;
                 var target = Math.Min(value, _selectedScanRegion.Value.SizeT - 1);
                 if (SetProperty(ref _tIndex, target))
-                    LoadImageDataEvent?.Invoke(this, EventArgs.Empty);
+                    LoadImageDataEvent?.Invoke(this, ImageChangeType.T);
             }
         }
     }
 
     public class PlateDetail : BindableBase
     {
-        public event EventHandler LoadImageDataEvent;
+        //EventArg indicate if the image's size or tile is changed
+        public event EventHandler<ImageChangeType> LoadImageDataEvent;
 
         public OmeTiffLibraryWrapper.PlateInfo BaseInfo { get; }
 
@@ -186,14 +209,28 @@ namespace ImageReviewTool
                     if (beforeScan != null)
                         beforeScan.LoadImageDataEvent -= Scan_LoadImageDataEvent;
                     if (_selectedScan != null)
+                    {
                         _selectedScan.LoadImageDataEvent += Scan_LoadImageDataEvent;
+                        var channel = _selectedScan.ChannelInfos.FirstOrDefault();
+                        var region = _selectedScan.ScanRegionInfos.FirstOrDefault();
+                        bool autoTriggerEvent = true;
+                        if (Equals(_selectedScan.SelectedChannel, channel))
+                            autoTriggerEvent = false;
+                        _selectedScan.SelectedChannel = channel;
+
+                        if (Equals(_selectedScan.SelectedScanRegion, region))
+                            autoTriggerEvent = false;
+                        _selectedScan.SelectedScanRegion = region;
+                        if (!autoTriggerEvent)
+                            LoadImageDataEvent?.Invoke(this, ImageChangeType.Scan);
+                    }
                 }
             }
         }
 
-        private void Scan_LoadImageDataEvent(object sender, EventArgs e)
+        private void Scan_LoadImageDataEvent(object sender, ImageChangeType type)
         {
-            LoadImageDataEvent?.Invoke(this, EventArgs.Empty);
+            LoadImageDataEvent?.Invoke(this, type);
         }
     }
 
@@ -210,15 +247,24 @@ namespace ImageReviewTool
             set => SetProperty(ref _isOpening, value);
         }
 
-        private bool _isShiftTo8Bits = true;
-        public bool IsShiftTo8Bits
+        private bool _isAutoBC = false;
+        public bool IsAutoBC
         {
-            get => _isShiftTo8Bits;
+            get => _isAutoBC;
             set
             {
-                if (SetProperty(ref _isShiftTo8Bits, value) && IsValid)
+                if (SetProperty(ref _isAutoBC, value) && IsValid)
                 {
-                    Plate_LoadImageDataEvent(SelectedPlate, EventArgs.Empty);
+                    if (_isAutoBC)
+                    {
+                        _minValue = ImageMinValue;
+                        _maxValue = ImageMaxValue;
+                        OnPropertyChanged(nameof(MinValue));
+                        OnPropertyChanged(nameof(MaxValue));
+                        UpdateImageSource(ImageMinValue, ImageMaxValue);
+                    }
+                    else
+                        UpdateImageSource(null, null);
                 }
             }
         }
@@ -257,18 +303,55 @@ namespace ImageReviewTool
             }
         }
 
+        public double ImageMinValue { get; private set; } = double.NaN;
+        public double ImageMaxValue { get; private set; } = double.NaN;
+
+        public double MaxLimit { get; private set; } = double.NaN;
+
+        private bool _isLoading = false;
+        public bool IsLoading
+        {
+            get => _isLoading;
+            set => SetProperty(ref _isLoading, value);
+        }
+
+        private double _minValue = double.NaN;
+        public double MinValue
+        {
+            get => _minValue;
+            set
+            {
+                if (value < 0 || value > MaxLimit || value >= _maxValue )
+                    return;
+                var target = Math.Round(value);
+                SetProperty(ref _minValue, target);
+            }
+        }
+
+        private double _maxValue = double.NaN;
+        public double MaxValue
+        {
+            get => _maxValue;
+            set
+            {
+                if (value < 0 || value > MaxLimit || value <= _minValue)
+                    return;
+                var target = Math.Round(value);
+                SetProperty(ref _maxValue, target);
+            }
+        }
+
+        public bool IsFlimData { get; private set; }
+
         public Point? PhysicalPoint { get; private set; }
 
         public bool IsPointInImage => PhysicalPoint != null;
 
-
         public ToolBase CurrentTool { get; } = new ToolDragger();
         public ImageTool.Coordinate Coordinate { get; } = new ImageTool.Coordinate();
 
-        private readonly ObservableCollection<ImageViewModel> _images = new();
-        public ObservableCollection<ImageViewModel> Images => _images;
-
-        private readonly List<ImageData> _datas = new List<ImageData>();
+        private readonly ObservableCollection<ImageViewModelEx> _images = new();
+        public ObservableCollection<ImageViewModelEx> Images => _images;
 
         private readonly ObservableCollection<FlimData> _flimData = new();
         public ObservableCollection<FlimData> FlimData => _flimData;
@@ -285,17 +368,19 @@ namespace ImageReviewTool
             set
             {
                 var beforePlate = _selectedPlate;
-                if (SetProperty(ref _selectedPlate, value))
-                {
-                    if (beforePlate != null)
-                        beforePlate.LoadImageDataEvent -= Plate_LoadImageDataEvent;
-                    if (_selectedPlate != null)
-                        _selectedPlate.LoadImageDataEvent += Plate_LoadImageDataEvent;
-                }
+                if (beforePlate != null)
+                    beforePlate.LoadImageDataEvent -= Plate_LoadImageDataEvent;
+                if (value != null)
+                    value.LoadImageDataEvent += Plate_LoadImageDataEvent;
+
+                SetProperty(ref _selectedPlate, value);
             }
         }
 
         private readonly System.Collections.Concurrent.ConcurrentQueue<FrameDetail> _frameInfoQueue = new();
+
+        public RelayCommand LoadCommand => new(OnLoadFile);
+        public RelayCommand ApplyMinMaxCommand => new(OnApplyMinMax);
 
         public MainWindowViewModel()
         {
@@ -303,24 +388,34 @@ namespace ImageReviewTool
             UpdateImage();
         }
 
+        private void OnApplyMinMax(object obj)
+        {
+            UpdateImageSource(MinValue, MaxValue);
+        }
+
         private void UpdateFlimData(Point pixelPoint)
         {
+            if (_selectedPlate == null ||
+                _selectedPlate.SelectedScan == null ||
+                _selectedPlate.SelectedScan.SelectedChannel == null)
+                return;
+
             FlimData.Clear();
             Intensity = 0;
-            var target = _datas.Find(data => data.Rect.Contains(pixelPoint.X, pixelPoint.Y));
+            var target = _images.FirstOrDefault(data => data.Contains(pixelPoint));
             if (target != null && target.OriginalData != null)
             {
                 _pixelPointX = (int)pixelPoint.X;
                 _pixelPointY = (int)pixelPoint.Y;
-                var physical = Coordinate.GetPhysicalPointFromScreen(pixelPoint);
+                var physical = Coordinate.GetPhysicalPointFromPixel(pixelPoint);
                 PhysicalPoint = new Point(Math.Round(physical.X, 3), Math.Round(physical.Y, 3));
 
                 var offsetX = (int)(_pixelPointX - target.Rect.X);
                 var offsetY = (int)(_pixelPointY - target.Rect.Y);
 
-                var stride = (int)target.Rect.Width * target.SamplesPerPixel * target.DataBytes;
-                var dataOffset = stride * offsetY + offsetX * target.SamplesPerPixel;
-                for (int i = 0; i < target.SamplesPerPixel; i++)
+                var stride = (int)target.Rect.Width * target.BinSize * target.DataBytes;
+                var dataOffset = stride * offsetY + offsetX * target.BinSize * target.DataBytes;
+                for (int i = 0; i < target.BinSize; i++)
                 {
                     int valueTemp = 0;
                     if (target.PixelType == OmeTiffLibraryWrapper.PixelType.PIXEL_UINT16)
@@ -354,21 +449,133 @@ namespace ImageReviewTool
             return Math.Pow(10d, (int)sourceUnit - (int)destinationUnit);
         }
 
-        private bool _isLoading = false;
+        private CancellationTokenSource _cancelSource = new CancellationTokenSource();
+
+        private void UpdateImageSource(double? min, double? max)
+        {
+            _cancelSource.Cancel();
+            _cancelSource.Dispose();
+            _cancelSource = new CancellationTokenSource();
+            var token = _cancelSource.Token;
+            if (min == null || max == null || (min.Value < ImageMinValue && max.Value > ImageMaxValue))
+            {
+                Task.Run(() =>
+                {
+                    Parallel.For(0, _images.Count, new ParallelOptions() { CancellationToken = token }, (index, state) =>
+                    {
+                        if (token.IsCancellationRequested)
+                        {
+                            state.Stop();
+                            return;
+                        }
+                        var img = _images[index];
+                        byte[] usedData = img.OriginalData;
+                        if (img.BinSize > 1)
+                        {
+                            usedData = img.FlimSumData;
+                        }
+
+                        Application.Current?.Dispatcher.Invoke(() =>
+                        {
+                            var wbmp = (img.Image as WriteableBitmap);
+                            wbmp.Lock();
+
+                            Int32Rect rect = new(0, 0, (int)img.Rect.Width, (int)img.Rect.Height);
+                            wbmp.WritePixels(rect, usedData, rect.Width * img.DataBytes, 0);
+
+                            wbmp.Unlock();
+                        }, System.Windows.Threading.DispatcherPriority.Render);
+                    });
+                }, token);
+            }
+            else
+            {
+                Task.Run(() =>
+                {
+                    Parallel.For(0, _images.Count, new ParallelOptions() { CancellationToken = token }, (index, state) =>
+                    {
+                        if (token.IsCancellationRequested)
+                        {
+                            state.Stop();
+                            return;
+                        }
+                        var img = _images[index];
+                        byte[] usedData = img.OriginalData;
+                        if (img.BinSize > 1)
+                        {
+                            usedData = img.FlimSumData;
+                        }
+                        var pixelCount = usedData.Length / img.DataBytes;
+                        Array finnalData;
+
+                        var upper = (1 << (img.DataBytes * 8)) - 1;
+                        var m_value = upper / (max.Value - min.Value);
+                        var a_value = 0 - min.Value * m_value;
+
+                        if (img.PixelType == OmeTiffLibraryWrapper.PixelType.PIXEL_UINT16)
+                        {
+                            ushort[] tempData = new ushort[pixelCount];
+
+                            for (int i = 0; i < pixelCount; i++)
+                            {
+                                ushort data_i = BitConverter.ToUInt16(usedData, i * img.DataBytes);
+                                tempData[i] = (ushort)Math.Clamp(data_i * m_value + a_value, 0d, upper);
+                            }
+                            finnalData = tempData;
+
+                        }
+                        else
+                        {
+                            byte[] tempData = new byte[pixelCount];
+
+                            for (int i = 0; i < pixelCount; i++)
+                            {
+                                tempData[i] = (byte)Math.Clamp(usedData[i] * m_value + a_value, 0d, upper);
+                            }
+                            finnalData = tempData;
+                        }
+
+                        if (token.IsCancellationRequested)
+                        {
+                            state.Stop();
+                            return;
+                        }
+
+                        Application.Current?.Dispatcher.Invoke(() =>
+                        {
+                            var wbmp = (img.Image as WriteableBitmap);
+                            wbmp.Lock();
+
+                            Int32Rect rect = new(0, 0, (int)img.Rect.Width, (int)img.Rect.Height);
+                            wbmp.WritePixels(rect, finnalData, rect.Width * img.DataBytes, 0);
+
+                            wbmp.Unlock();
+                        }, System.Windows.Threading.DispatcherPriority.Render);
+                    });
+                }, token);
+            }
+        }
+
         private void UpdateImage()
         {
             Task.Run(() =>
             {
                 while (true)
                 {
-                    if (!_isLoading && _frameInfoQueue.TryDequeue(out var frameDetail))
+                    if (!IsLoading && _frameInfoQueue.TryDequeue(out var frameDetail))
                     {
                         try
                         {
-                            _isLoading = true;
+                            IsLoading = true;
+                            ImageMinValue = double.NaN;
+                            ImageMaxValue = double.NaN;
+
                             var scanInfo = frameDetail.ScanInfo;
                             var scanRegionInfo = frameDetail.ScanRegionInfo;
                             var channelInfo = frameDetail.ChannelInfo;
+
+                            var binSize = channelInfo.BinSize;
+                            var pixelType = scanInfo.PixelType;
 
                             var imageWidth = scanRegionInfo.PixelSizeX;
                             var imageHeight = scanRegionInfo.PixelSizeY;
@@ -386,8 +593,8 @@ namespace ImageReviewTool
                             {
                                 X = scanRegionInfo.StartPhysicalX * startMultiplyX,
                                 Y = scanRegionInfo.StartPhysicalY * startMultiplyY,
-                                Width = imageWidth * scanInfo.PixelPhysicalSizeX * widthMultiply,
-                                Height = imageHeight * scanInfo.PixelPhysicalSizeY * heightMultiply
+                                Width = size.Width * scanInfo.PixelPhysicalSizeX * widthMultiply,
+                                Height = size.Height * scanInfo.PixelPhysicalSizeY * heightMultiply
                             };
 
                             if (size != Coordinate.PixelSize)
@@ -399,7 +606,7 @@ namespace ImageReviewTool
 
                             var dataBytes = 1;
                             PixelFormat pixelFormat = PixelFormats.Gray8;
-                            switch (scanInfo.PixelType)
+                            switch (pixelType)
                             {
                                 case OmeTiffLibraryWrapper.PixelType.PIXEL_UNDEFINED:
                                 case OmeTiffLibraryWrapper.PixelType.PIXEL_INT8:
@@ -428,7 +635,7 @@ namespace ImageReviewTool
                             //make the image count less than 200, to improve ImageCanvas performance
                             while (totalCount > 200)
                             {
-                                if (columnCount > rowCount)
+                                if (columnCount >= rowCount)
                                 {
                                     multiTileWidth += tileWidth;
                                     columnCount = (int)Math.Ceiling((double)imageWidth / multiTileWidth);
@@ -442,45 +649,67 @@ namespace ImageReviewTool
                             }
 
                             var bytesPerPixel = channelInfo.SamplesPerPixel * dataBytes;
+                            var bytesPerElement = bytesPerPixel * binSize;
 
-                            _images.Clear();
-                            _datas.Clear();
+                            if (frameDetail.IsFrameSizeOrTileChanged)
+                                _images.Clear();
 
-                            Parallel.For(0, totalCount, new ParallelOptions() { MaxDegreeOfParallelism = 5 }, index =>
+                            object locker = new();
+                            Parallel.For(0, totalCount, index =>
+                            //for (int index = 0; index < totalCount; index++)
                             {
                                 var r = index / columnCount;
                                 var c = index % columnCount;
 
-                                var y = (int)(r * multiTileHeight);
-                                var h = (int)(imageHeight - y >= multiTileHeight ? multiTileHeight : imageHeight - y);
+                                var y = (uint)(r * multiTileHeight);
+                                var h = imageHeight - y >= multiTileHeight ? multiTileHeight : imageHeight - y;
 
-                                var x = (int)(c * multiTileWidth);
-                                var w = (int)(imageWidth - x >= multiTileWidth ? multiTileWidth : imageWidth - x);
+                                var x = (uint)(c * multiTileWidth);
+                                var w = imageWidth - x >= multiTileWidth ? multiTileWidth : imageWidth - x;
 
-                                int count = w * h;
-                                int stride = w * dataBytes;
+                                uint count = w * h;
+                                byte[] imageBuffer = new byte[count * bytesPerElement];
 
-                                byte[] imageBuffer = new byte[count * bytesPerPixel];
-
-                                OmeTiffLibraryWrapper.OmeRect omeRect = new()
+                                //use function ome_get_raw_tile_data
+                                if (multiTileWidth == tileWidth && multiTileHeight == tileHeight && index % 2 == 1)
                                 {
-                                    x = x,
-                                    y = y,
-                                    width = w,
-                                    height = h,
-                                };
-
-                                unsafe
-                                {
-                                    fixed (byte* bufferPointer = imageBuffer)
+                                    unsafe
                                     {
-                                        var ptr = new IntPtr(bufferPointer);
-                                        if (_fileHandle < 0)
-                                            return;
+                                        fixed (byte* bufferPointer = imageBuffer)
+                                        {
+                                            var ptr = new IntPtr(bufferPointer);
+                                            if (_fileHandle < 0)
+                                                return;
 
-                                        int status = OmeTiffLibraryWrapper.ome_get_raw_data(_fileHandle, frameDetail.FrameInfo, omeRect, ptr);
-                                        if (status != 0)
-                                            return;
+                                            int status = OmeTiffLibraryWrapper.ome_get_raw_tile_data(_fileHandle, frameDetail.FrameInfo, (uint)r, (uint)c, ptr, (uint)(w * bytesPerElement));
+                                            if (status != 0)
+                                                return;
+                                        }
+                                    }
+                                }
+                                //use function ome_get_raw_rect
+                                else
+                                {
+                                    OmeTiffLibraryWrapper.OmeRect omeRect = new()
+                                    {
+                                        x = x,
+                                        y = y,
+                                        width = w,
+                                        height = h,
+                                    };
+
+                                    unsafe
+                                    {
+                                        fixed (byte* bufferPointer = imageBuffer)
+                                        {
+                                            var ptr = new IntPtr(bufferPointer);
+                                            if (_fileHandle < 0)
+                                                return;
+
+                                            int status = OmeTiffLibraryWrapper.ome_get_raw_data(_fileHandle, frameDetail.FrameInfo, omeRect, ptr, (uint)(w * bytesPerElement));
+                                            if (status != 0)
+                                                return;
+                                        }
                                     }
                                 }
 
@@ -492,66 +721,116 @@ namespace ImageReviewTool
                                     Width = w
                                 };
 
-                                var isFlimData = channelInfo.SamplesPerPixel > 1;
+                                var isFlimData = binSize > 1;
+                                IsFlimData = isFlimData;
+                                OnPropertyChanged(nameof(IsFlimData));
+
+                                ImageViewModelEx vm = null;
+                                lock (locker)
+                                {
+                                    vm = _images.FirstOrDefault(f => f.Rect.Equals(imageRect) && f.BinSize == (int)binSize && f.PixelType == pixelType);
+                                }
+
+                                if (vm != null)
+                                {
+                                    Array.Copy(imageBuffer, vm.OriginalData, count * bytesPerElement);
+                                }
+                                else
+                                {
+                                    vm = new(imageRect, (int)binSize, scanInfo.PixelType)
+                                    {
+                                        OriginalData = new byte[count * bytesPerElement]
+                                    };
+                                    if (isFlimData)
+                                        vm.FlimSumData = new byte[count * bytesPerPixel];
+                                    Array.Copy(imageBuffer, vm.OriginalData, count * bytesPerElement);
+                                    Application.Current?.Dispatcher.Invoke(() =>
+                                    {
+                                        WriteableBitmap wbmp = new((int)imageRect.Width, (int)imageRect.Height, 96, 96, pixelFormat, null);
+                                        vm.Image = wbmp;
+                                    });
+                                    lock (locker)
+                                    {
+                                        _images.Add(vm);
+                                    }
+                                }
+
                                 if (isFlimData)
                                 {
-                                    ImageData data = new(imageRect, (int)channelInfo.SamplesPerPixel, scanInfo.PixelType)
-                                    {
-                                        OriginalData = new byte[count * bytesPerPixel]
-                                    };
-                                    Array.Copy(imageBuffer, data.OriginalData, count * bytesPerPixel);
-                                    _datas.Add(data);
-
                                     int maxValue = (1 << (dataBytes * 8)) - 1;
                                     for (int i = 0; i < count; i++)
                                     {
-                                        if (scanInfo.PixelType == OmeTiffLibraryWrapper.PixelType.PIXEL_UINT16)
+                                        if (pixelType == OmeTiffLibraryWrapper.PixelType.PIXEL_UINT16)
                                         {
                                             uint summary = 0;
-                                            for (int j = 0; j < channelInfo.SamplesPerPixel; j++)
+                                            for (int j = 0; j < binSize; j++)
                                             {
-                                                ushort data_i = BitConverter.ToUInt16(imageBuffer, (i * (int)channelInfo.SamplesPerPixel + j) * dataBytes);
+                                                ushort data_i = BitConverter.ToUInt16(imageBuffer, (i * (int)binSize + j) * dataBytes);
                                                 summary += data_i;
                                             }
                                             var clampValue = Math.Clamp(summary, 0, maxValue);
+                                            if (double.IsNaN(ImageMinValue) || ImageMinValue > clampValue)
+                                                ImageMinValue = clampValue;
+                                            if (double.IsNaN(ImageMaxValue) || ImageMaxValue < clampValue)
+                                                ImageMaxValue = clampValue;
                                             var bytes = BitConverter.GetBytes((ushort)clampValue);
-                                            imageBuffer[i * dataBytes] = bytes[0];
-                                            imageBuffer[i * dataBytes + 1] = bytes[1];
+                                            vm.FlimSumData[i * dataBytes] = bytes[0];
+                                            vm.FlimSumData[i * dataBytes + 1] = bytes[1];
                                         }
                                         else
                                         {
                                             uint summary = 0;
-                                            for (int j = 0; j < channelInfo.SamplesPerPixel; j++)
+                                            for (int j = 0; j < binSize; j++)
                                             {
-                                                summary += imageBuffer[(i * channelInfo.SamplesPerPixel + j) * dataBytes];
+                                                summary += imageBuffer[(i * binSize + j) * dataBytes];
                                             }
                                             var clampValue = Math.Clamp(summary, 0, maxValue);
-                                            imageBuffer[i] = (byte)clampValue;
+                                            if (double.IsNaN(ImageMinValue) || ImageMinValue > clampValue)
+                                                ImageMinValue = clampValue;
+                                            if (double.IsNaN(ImageMaxValue) || ImageMaxValue < clampValue)
+                                                ImageMaxValue = clampValue;
+                                            vm.FlimSumData[i] = (byte)clampValue;
                                         }
                                     }
                                 }
-
-                                if (_isShiftTo8Bits && scanInfo.PixelType == OmeTiffLibraryWrapper.PixelType.PIXEL_UINT16)
+                                else
                                 {
-                                    for (int i = 0; i < count; i++)
+                                    if (pixelType == OmeTiffLibraryWrapper.PixelType.PIXEL_UINT16)
                                     {
-                                        ushort data_i = BitConverter.ToUInt16(imageBuffer, i * dataBytes);
-                                        imageBuffer[i] = (byte)(data_i >> ((int)scanInfo.SignificatBits - 8));
+                                        for (int i = 0; i < count; i++)
+                                        {
+                                            ushort data_i = BitConverter.ToUInt16(imageBuffer, i * dataBytes);
+                                            if (double.IsNaN(ImageMinValue) || ImageMinValue > data_i)
+                                                ImageMinValue = data_i;
+                                            if (double.IsNaN(ImageMaxValue) || ImageMaxValue < data_i)
+                                                ImageMaxValue = data_i;
+                                        }
                                     }
-
-                                    pixelFormat = PixelFormats.Gray8;
-                                    stride = w;
+                                    else
+                                    {
+                                        ImageMinValue = imageBuffer.Min();
+                                        ImageMaxValue = imageBuffer.Max();
+                                    }
                                 }
-
-                                BitmapSource bitmap = BitmapSource.Create(w, h, 96, 96, pixelFormat, null, imageBuffer, stride);
-                                _images.Add(new ImageViewModel { Image = bitmap, Rect = imageRect });
                             });
+                            //}
+
+                            if (_isAutoBC)
+                            {
+                                _minValue = ImageMinValue;
+                                _maxValue = ImageMaxValue;
+                                OnPropertyChanged(nameof(MinValue));
+                                OnPropertyChanged(nameof(MaxValue));
+                                UpdateImageSource(ImageMinValue, ImageMaxValue);
+                            }
+                            else
+                                UpdateImageSource(null, null);
 
                             Application.Current.Dispatcher.Invoke(() => UpdateFlimData(new Point(_pixelPointX, _pixelPointY)));
                         }
                         finally
                         {
-                            _isLoading = false;
+                            IsLoading = false;
                         }
                     }
                     else
@@ -562,36 +841,53 @@ namespace ImageReviewTool
             });
         }
 
-        private void Plate_LoadImageDataEvent(object sender, EventArgs e)
+        private void Plate_LoadImageDataEvent(object sender, ImageChangeType type)
         {
-            if (sender is PlateDetail plate && plate.SelectedScan?.SelectedScanRegion != null && plate.SelectedScan?.SelectedChannel != null)
+            if (sender is PlateDetail plate && plate.SelectedScan != null)
             {
                 var scan = plate.SelectedScan;
-                var scanRegion = scan.SelectedScanRegion.Value;
-                var channel = scan.SelectedChannel.Value;
-                OmeTiffLibraryWrapper.FrameInfo frameInfo = new()
+                if (type == ImageChangeType.Plate || type == ImageChangeType.Scan || double.IsNaN(MaxLimit))
                 {
-                    plate_id = plate.BaseInfo.Id,
-                    scan_id = scan.BaseInfo.Id,
-                    region_id = scanRegion.Id,
-                    c_id = channel.Id,
-                    z_id = scan.ZIndex,
-                    t_id = scan.TIndex,
-                };
+                    MaxLimit = (1 << (int)scan.BaseInfo.SignificatBits) - 1;
+                    OnPropertyChanged(nameof(MaxLimit));
+                    _minValue = 0;
+                    _maxValue = MaxLimit;
+                    OnPropertyChanged(nameof(MinValue));
+                    OnPropertyChanged(nameof(MaxValue));
+                }
+                if (plate.SelectedScan.SelectedChannel != null)
+                {
+                    var channel = scan.SelectedChannel.Value;
+                    if (plate.SelectedScan.SelectedScanRegion != null)
+                    {
+                        var scanRegion = scan.SelectedScanRegion.Value;
+                        OmeTiffLibraryWrapper.FrameInfo frameInfo = new()
+                        {
+                            plate_id = plate.BaseInfo.Id,
+                            scan_id = scan.BaseInfo.Id,
+                            region_id = scanRegion.Id,
+                            c_id = channel.Id,
+                            z_id = scan.ZIndex,
+                            t_id = scan.TIndex,
+                        };
 
-                var frameDetail = new FrameDetail
-                {
-                    ScanInfo = scan.BaseInfo,
-                    ChannelInfo = channel,
-                    ScanRegionInfo = scanRegion,
-                    FrameInfo = frameInfo,
-                };
-                _frameInfoQueue.Clear();
-                _frameInfoQueue.Enqueue(frameDetail);
+                        var frameDetail = new FrameDetail
+                        {
+                            ScanInfo = scan.BaseInfo,
+                            ChannelInfo = channel,
+                            ScanRegionInfo = scanRegion,
+                            FrameInfo = frameInfo,
+                        };
+                        if (type == ImageChangeType.T || type == ImageChangeType.Z)
+                            frameDetail.IsFrameSizeOrTileChanged = false;
+                        else
+                            frameDetail.IsFrameSizeOrTileChanged = true;
+                        _frameInfoQueue.Clear();
+                        _frameInfoQueue.Enqueue(frameDetail);
+                    }
+                }
             }
         }
-
-        public RelayCommand LoadCommand => new(OnLoadFile);
 
         private void ClearAll()
         {
@@ -600,10 +896,13 @@ namespace ImageReviewTool
             _images.Clear();
             _plates.Clear();
             SelectedPlate = null;
-            _datas.Clear();
             _flimData.Clear();
             PhysicalPoint = null;
             Intensity = 0;
+            ImageMinValue = double.NaN;
+            ImageMaxValue = double.NaN;
+            MaxLimit = double.NaN;
+            OnPropertyChanged(nameof(MaxLimit));
             OnPropertyChanged(nameof(Intensity));
             OnPropertyChanged(nameof(PhysicalPoint));
             OnPropertyChanged(nameof(IsPointInImage));
@@ -713,6 +1012,19 @@ namespace ImageReviewTool
                 }
                 IsOpening = false;
                 OnPropertyChanged(nameof(IsValid));
+                if (!IsValid)
+                    return;
+                //Auto select one
+                SelectedPlate = Plates.FirstOrDefault();
+                if (SelectedPlate != null)
+                {
+                    SelectedPlate.SelectedScan = SelectedPlate.ScanDetails.FirstOrDefault();
+                    if (SelectedPlate.SelectedScan != null)
+                    {
+                        SelectedPlate.SelectedScan.SelectedScanRegion = SelectedPlate.SelectedScan.ScanRegionInfos.FirstOrDefault();
+                        SelectedPlate.SelectedScan.SelectedChannel = SelectedPlate.SelectedScan.ChannelInfos.FirstOrDefault();
+                    }
+                }
             });
         }
     }

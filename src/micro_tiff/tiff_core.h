@@ -4,7 +4,6 @@
 #include <mutex>
 #include "micro_tiff.h"
 #include "tiff_ifd.h"
-#include "tiff_def.h"
 #include "tiff_err.h"
 
 class tiff_core
