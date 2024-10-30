@@ -457,7 +457,7 @@ int32_t TiffContainer::GetRectData(const uint32_t ifd_no, const OmeRect rect, vo
 	{
 		tile_rect.x = x + rect_with_bin.x;
 		uint32_t x_remainder = tile_rect.x % image_info.block_width;
-		if (x + image_info.block_width > rect_with_bin.width)
+		if (x_remainder + (rect_with_bin.width - x) < image_info.block_width)
 			tile_rect.width = rect_with_bin.width - x;
 		else
 			tile_rect.width = image_info.block_width - x_remainder;
@@ -467,7 +467,7 @@ int32_t TiffContainer::GetRectData(const uint32_t ifd_no, const OmeRect rect, vo
 		{
 			tile_rect.y = y + rect_with_bin.y;
 			uint32_t y_remainder = tile_rect.y % image_info.block_height;
-			if (y + image_info.block_height > rect_with_bin.height)
+			if (y_remainder + (rect_with_bin.height - y) < image_info.block_height)
 				tile_rect.height = rect_with_bin.height - y;
 			else
 				tile_rect.height = image_info.block_height - y_remainder;
