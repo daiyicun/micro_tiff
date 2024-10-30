@@ -407,7 +407,7 @@ namespace ImageReviewTool
         public static extern int ome_get_raw_tile_data(int handle, FrameInfo frame_info, uint row, uint column, IntPtr image_data, uint stride = 0);
 
         [DllImport(OmeTiffLibraryPath, EntryPoint = "ome_get_tag", CallingConvention = CallingConvention.Cdecl)]
-        public static extern int ome_get_tag(int handle, FrameInfo frame_info, ushort tag_id, ref uint tag_size, IntPtr tag_value);
+        public static extern int ome_get_tag(int handle, FrameInfo frame_info, ushort tag_id, ref TiffTagDataType tag_type, ref uint tag_count, IntPtr tag_value);
 
         [DllImport(OmeTiffLibraryPath, EntryPoint = "ome_set_tag", CallingConvention = CallingConvention.Cdecl)]
         public static extern int ome_set_tag(int handle, FrameInfo frame_info, ushort tag_id, TiffTagDataType tag_type, uint tag_count, IntPtr tag_value);

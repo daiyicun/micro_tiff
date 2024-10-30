@@ -8,8 +8,9 @@ using namespace std;
 using namespace ome;
 namespace fs = filesystem;
 
-#define CHECK_OPENMODE(mode) \
-if (mode==OpenMode::READ_ONLY_MODE) return ErrorCode::ERR_MODIFY_NOT_ALLOWED
+#ifndef CHECK_OPENMODE
+#define CHECK_OPENMODE(mode) if (mode==OpenMode::READ_ONLY_MODE) return ErrorCode::ERR_MODIFY_NOT_ALLOWED
+#endif // !CHECK_OPENMODE
 
 OmeTiff::OmeTiff(void )
 {
@@ -99,20 +100,52 @@ int32_t OmeTiff::Init(const wchar_t* file_name, const OpenMode mode, const Compr
 
 	if (_open_mode != OpenMode::CREATE_MODE)
 	{
-		uint32_t tag_size;
-		int32_t result = header_container->GetTag(header_ifd_no, TIFFTAG_IMAGEDESCRIPTION, tag_size, nullptr);
+		TiffTagDataType tag_type;
+		uint32_t tag_count;
+		result = header_container->GetTag(header_ifd_no, TIFFTAG_IMAGEDESCRIPTION, tag_type, tag_count, nullptr);
 		if (result != ErrorCode::STATUS_OK)
 			return result;
 
-		if (tag_size == 0)
+		if (tag_count == 0)
 			return ErrorCode::ERR_OME_XML_SIZE_ZERO;
 
-		unique_ptr<uint8_t[]> auto_xml = make_unique<uint8_t[]>(tag_size + 1);
+		uint8_t type_size = 0;
+		switch (tag_type)
+		{
+		case TiffTagDataType::TIFF_ASCII:
+		case TiffTagDataType::TIFF_BYTE:
+		case TiffTagDataType::TIFF_SBYTE:
+		case TiffTagDataType::TIFF_UNDEFINED:
+			type_size = 1;
+			break;
+		case TiffTagDataType::TIFF_SHORT:
+		case TiffTagDataType::TIFF_SSHORT:
+			type_size = 2;
+			break;
+		case TiffTagDataType::TIFF_LONG:
+		case TiffTagDataType::TIFF_SLONG:
+		case TiffTagDataType::TIFF_FLOAT:
+		case TiffTagDataType::TIFF_IFD:
+			type_size = 4;
+			break;
+		case TiffTagDataType::TIFF_RATIONAL:
+		case TiffTagDataType::TIFF_SRATIONAL:
+		case TiffTagDataType::TIFF_DOUBLE:
+		case TiffTagDataType::TIFF_LONG8:
+		case TiffTagDataType::TIFF_SLONG8:
+		case TiffTagDataType::TIFF_IFD8:
+			type_size = 8;
+			break;
+		default:
+			return ErrorCode::TIFF_ERR_TAG_TYPE_INCORRECT;
+		}
+
+		unique_ptr<uint8_t[]> auto_xml = make_unique<uint8_t[]>(type_size * tag_count + 1);
 		uint8_t* xml = auto_xml.get();
 		if (xml == nullptr)
 			return ErrorCode::ERR_BUFFER_IS_NULL;
 
-		result = header_container->GetTag(header_ifd_no, TIFFTAG_IMAGEDESCRIPTION, tag_size, xml);
+		result = header_container->GetTag(header_ifd_no, TIFFTAG_IMAGEDESCRIPTION, tag_type, tag_count, xml);
 		if (result != ErrorCode::STATUS_OK)
 			return result;
 
@@ -304,7 +337,7 @@ int32_t OmeTiff::AddChannel(uint32_t plate_id, uint32_t scan_id, ChannelInfo& ch
 
 	if (channel_info.bin_size < 1)
 		return ErrorCode::ERR_CHANNEL_BIN_SIZE;
-	if (channel_info.sample_per_pixel != 1 && channel_info.sample_per_pixel != 3)
+	if (channel_info.samples_per_pixel != 1 && channel_info.samples_per_pixel != 3)
 		return ErrorCode::ERR_CHANNEL_SAMPLES_PER_PIXEL;
 
 	auto it_plate = _plates.find(plate_id);
@@ -639,11 +672,11 @@ int32_t OmeTiff::CreateOMEHeader()
 	if (status != ErrorCode::STATUS_OK)
 		return status;
 
-	status = header_container->SetTag(header_ifd_no, TIFFTAG_IMAGEDESCRIPTION, TagDataType::TIFF_ASCII, (uint32_t)xml_data.size(), (void*)xml_data.c_str());
+	status = header_container->SetTag(header_ifd_no, TIFFTAG_IMAGEDESCRIPTION, TiffTagDataType::TIFF_ASCII, (uint32_t)xml_data.size(), (void*)xml_data.c_str());
 	return status;
 }
 
-int32_t OmeTiff::SetTag(FrameInfo frame, uint16_t tag_id, uint16_t tag_type, uint32_t tag_count, void* tag_value)
+int32_t OmeTiff::SetTag(FrameInfo frame, uint16_t tag_id, TiffTagDataType tag_type, uint32_t tag_count, void* tag_value)
 {
 	TiffContainer* container = nullptr;
 	uint32_t ifd_no;
@@ -654,7 +687,7 @@ int32_t OmeTiff::SetTag(FrameInfo frame, uint16_t tag_id, uint16_t tag_type, uin
 	return container->SetTag(ifd_no, tag_id, tag_type, tag_count, tag_value);
 }
 
-int32_t OmeTiff::GetTag(FrameInfo frame, uint16_t tag_id, uint32_t& tag_size, void* tag_value)
+int32_t OmeTiff::GetTag(FrameInfo frame, uint16_t tag_id, TiffTagDataType& tag_type, uint32_t& tag_count, void* tag_value)
 {
 	TiffContainer* container = nullptr;
 	uint32_t ifd_no;
@@ -662,7 +695,7 @@ int32_t OmeTiff::GetTag(FrameInfo frame, uint16_t tag_id, uint32_t& tag_size, vo
 	if (status != ErrorCode::STATUS_OK)
 		return status;
 
-	return container->GetTag(ifd_no, tag_id, tag_size, tag_value);
+	return container->GetTag(ifd_no, tag_id, tag_type, tag_count, tag_value);
 }
 
 int32_t OmeTiff::GetRawContainer(FrameInfo frame, TiffContainer** container, uint32_t& ifd_no, bool is_read)
@@ -799,7 +832,7 @@ int32_t OmeTiff::GetRawContainer(FrameInfo frame, TiffContainer** container, uin
 
 		int32_t created_ifd_no = (*container)->CreateIFD(scan_region_info.pixel_size_x * channel_info.bin_size, scan_region_info.pixel_size_y,
 			scan._info.tile_pixel_size_width * channel_info.bin_size, scan._info.tile_pixel_size_height, 
-			scan._info.pixel_type, (uint16_t)it_channel->second._info.sample_per_pixel, _compression_mode);
+			scan._info.pixel_type, (uint16_t)it_channel->second._info.samples_per_pixel, _compression_mode);
 		if (created_ifd_no < 0)
 			return created_ifd_no;
 

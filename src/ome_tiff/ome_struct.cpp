@@ -6,7 +6,7 @@ namespace ome
 {
 	Well::Well()
 	{
-		memset(&_info, 0, sizeof(WellInfo));		
+		_info = { 0 };
 		_info.well_shape = Shape::SHAPE_UNDEFINED;
 		_well_sample_array.clear();
 		_well_sample_id_index = 1;
@@ -104,7 +104,7 @@ namespace ome
 
 	Plate::Plate()
 	{
-		memset(&_info, 0, sizeof(PlateInfo));
+		_info = { 0 };
 		_info.physicalsize_unit_x = DistanceUnit::DISTANCE_UNDEFINED;
 		_info.physicalsize_unit_y = DistanceUnit::DISTANCE_UNDEFINED;
 		_wells_array.clear();
@@ -174,7 +174,7 @@ namespace ome
 
 	Scan::Scan()
 	{
-		memset(&_info, 0, sizeof(ScanInfo));
+		_info = { 0 };
 		_info.pixel_physical_uint_x = DistanceUnit::DISTANCE_UNDEFINED;
 		_info.pixel_physical_uint_y = DistanceUnit::DISTANCE_UNDEFINED;
 		_info.pixel_physical_uint_z = DistanceUnit::DISTANCE_UNDEFINED;
@@ -196,7 +196,7 @@ namespace ome
 		if (it != _channel_array.end())
 		{
 			bool check_result = false;
-			if (it->second._info.sample_per_pixel == info.sample_per_pixel)
+			if (it->second._info.samples_per_pixel == info.samples_per_pixel)
 			{
 				wstring str1 = wstring(it->second._info.name);
 				wstring str2 = wstring(info.name);
@@ -265,12 +265,12 @@ namespace ome
 
 	ScanRegion::ScanRegion()
 	{
-		memset(&_info, 0, sizeof(ScanRegionInfo));
+		_info = { 0 };
 	}
 
 	ScanRegion::~ScanRegion()
 	{
-		memset(&_info, 0, sizeof(ScanRegionInfo));
+		_info = { 0 };
 	}
 
 	ScanRegion& ScanRegion::operator=(const ScanRegion& region)
@@ -284,7 +284,7 @@ namespace ome
 
 	Pixels::Pixels()
 	{
-		memset(&_info, 0, sizeof(PixelsInfo));
+		_info = { 0 };
 		_tiff_datas.clear();
 		_channels.clear();
 		_t_max = 0;
@@ -296,7 +296,7 @@ namespace ome
 		if (it != _channels.end())
 		{
 			bool check_result = false;
-			if (it->second._info.sample_per_pixel == info.sample_per_pixel)
+			if (it->second._info.samples_per_pixel == info.samples_per_pixel)
 			{
 				wstring str1 = wstring(it->second._info.name);
 				wstring str2 = wstring(info.name);

@@ -4,11 +4,78 @@
 #include <iostream>
 #include <string>
 #include <filesystem>
-#include "..\..\src\ome_tiff\ome_tiff_library.h"
+#include "../../src/ome_tiff/ome_tiff_library.h"
 
-int32_t ome_read_example_by_tile(uint32_t row_index, uint32_t column_index)
+int32_t ome_read_tag_example()
 {
-	int32_t hdl = ome_open_file(L"ome_read.tif", ome::OpenMode::READ_ONLY_MODE);
+	const wchar_t* file_name = L"ome_read.tif";
+	const uint16_t tag_id = 270;
+
+	int32_t hdl = ome_open_file(file_name, ome::OpenMode::READ_ONLY_MODE);
+	if (hdl < 0)
+		return hdl;
+
+	int32_t result = 0;
+
+	ome::TiffTagDataType tag_type;
+	uint32_t tag_count;
+	ome::FrameInfo header{ 0 };
+	header.plate_id = UINT32_MAX;
+	result = ome_get_tag(hdl, header, tag_id, &tag_type, &tag_count, nullptr);
+	if (result != 0)
+	{
+		ome_close_file(hdl);
+		return result;
+	}
+
+	uint32_t type_type_size = 0;
+	switch (tag_type)
+	{
+	case ome::TiffTagDataType::TIFF_ASCII:
+	case ome::TiffTagDataType::TIFF_BYTE:
+	case ome::TiffTagDataType::TIFF_SBYTE:
+	case ome::TiffTagDataType::TIFF_UNDEFINED:
+		type_type_size = 1;
+		break;
+	case ome::TiffTagDataType::TIFF_SHORT:
+	case ome::TiffTagDataType::TIFF_SSHORT:
+		type_type_size = 2;
+		break;
+	case ome::TiffTagDataType::TIFF_LONG:
+	case ome::TiffTagDataType::TIFF_SLONG:
+	case ome::TiffTagDataType::TIFF_FLOAT:
+	case ome::TiffTagDataType::TIFF_IFD:
+		type_type_size = 4;
+		break;
+	case ome::TiffTagDataType::TIFF_RATIONAL:
+	case ome::TiffTagDataType::TIFF_SRATIONAL:
+	case ome::TiffTagDataType::TIFF_DOUBLE:
+	case ome::TiffTagDataType::TIFF_LONG8:
+	case ome::TiffTagDataType::TIFF_SLONG8:
+	case ome::TiffTagDataType::TIFF_IFD8:
+		type_type_size = 8;
+		break;
+	default:
+	{
+		ome_close_file(hdl);
+		return ome::ErrorCode::TIFF_ERR_TAG_TYPE_INCORRECT;
+	}
+	}
+
+    std::unique_ptr<uint8_t[]> auto_tag_value = std::make_unique<uint8_t[]>(tag_count * type_type_size + 1);
+    uint8_t* tag_value = auto_tag_value.get();
+    result = ome_get_tag(hdl, header, tag_id, &tag_type, &tag_count, tag_value);
+    ome_close_file(hdl);
+    return result;
+}
+
+int32_t ome_read_data_by_tile_example()
+{
+	const wchar_t* file_name = L"ome_read.tif";
+	const uint32_t row_index = 2;
+	const uint32_t column_index = 2;
+
+	int32_t hdl = ome_open_file(file_name, ome::OpenMode::READ_ONLY_MODE);
 	if (hdl < 0)
 		return hdl;
 
@@ -69,7 +136,7 @@ int32_t ome_read_example_by_tile(uint32_t row_index, uint32_t column_index)
 					{
 						ome::ChannelInfo channel_info = channel_infos[c];
 
-						uint32_t image_stride = scan_info.tile_pixel_size_width * channel_info.sample_per_pixel * channel_info.bin_size * ((scan_info.significant_bits + 7) / 8);
+						uint32_t image_stride = scan_info.tile_pixel_size_width * channel_info.samples_per_pixel * channel_info.bin_size * ((scan_info.significant_bits + 7) / 8);
 
 						std::unique_ptr<uint8_t[]> auto_image_data = std::make_unique<uint8_t[]>(image_stride * scan_info.tile_pixel_size_height);
 						uint8_t* image_data = auto_image_data.get();
@@ -103,9 +170,16 @@ END:
 	return result;
 }
 
-int32_t ome_read_example_by_rect(ome::OmeRect rect)
+int32_t ome_read_data_by_rect_example()
 {
-	int32_t hdl = ome_open_file(L"ome_read.tif", ome::OpenMode::READ_ONLY_MODE);
+	const wchar_t* file_name = L"ome_read.tif";
+	ome::OmeRect rect = { 0 };
+	rect.x = 50;
+	rect.y = 60;
+	rect.width = 600;
+	rect.height = 640;
+
+	int32_t hdl = ome_open_file(file_name, ome::OpenMode::READ_ONLY_MODE);
 	if (hdl < 0)
 		return hdl;
 
@@ -166,7 +240,7 @@ int32_t ome_read_example_by_rect(ome::OmeRect rect)
 					{
 						ome::ChannelInfo channel_info = channel_infos[c];
 
-						uint32_t image_stride = rect.width * channel_info.sample_per_pixel * channel_info.bin_size * ((scan_info.significant_bits + 7) / 8);
+						uint32_t image_stride = rect.width * channel_info.samples_per_pixel * channel_info.bin_size * ((scan_info.significant_bits + 7) / 8);
 
 						std::unique_ptr<uint8_t[]> auto_image_data = std::make_unique<uint8_t[]>(image_stride * rect.height);
 						uint8_t* image_data = auto_image_data.get();
@@ -202,9 +276,42 @@ END:
 
 int32_t ome_write_example()
 {
-	int32_t hdl_write = ome_open_file(L"ome_write.tif", ome::OpenMode::CREATE_MODE, ome::CompressionMode::COMPRESSIONMODE_LZW);
+	const wchar_t* file_name = L"ome_write.tif";
+	const uint16_t custom_tag_id = 10600;
+
+	int32_t hdl_write = ome_open_file(file_name, ome::OpenMode::CREATE_MODE, ome::CompressionMode::COMPRESSIONMODE_LZW);
 	if (hdl_write < 0)
 		return hdl_write;
+
+	int32_t result_write = 0;
+
+	std::string tag_str = "The quick brown fox jumps over a lazy dog.";
+	ome::FrameInfo header{ 0 };
+	header.plate_id = UINT32_MAX;
+	result_write = ome_set_tag(hdl_write, header, custom_tag_id, ome::TiffTagDataType::TIFF_ASCII, (uint32_t)tag_str.size(), (void*)tag_str.c_str());
+	if (result_write != 0)
+	{
+		ome_close_file(hdl_write);
+		return result_write;
+	}
+
+	ome::PlateInfo plate_info{};
+	plate_info.id = 0;
+	plate_info.width = 115.5f;
+	plate_info.height = 70.3f;
+	plate_info.row_size = 1;
+	plate_info.column_size = 2;
+	plate_info.physicalsize_unit_x = ome::DistanceUnit::DISTANCE_MILLIMETER;
+	plate_info.physicalsize_unit_y = ome::DistanceUnit::DISTANCE_MILLIMETER;
+	std::filesystem::path p = std::filesystem::u8path("中文English混合Plate");
+	std::wstring plate_name = p.generic_wstring();
+	wmemcpy_s(plate_info.name, NAME_LEN, plate_name.c_str(), plate_name.size());
+	result_write = ome_add_plate(hdl_write, plate_info);
+	if (result_write != 0)
+	{
+		ome_close_file(hdl_write);
+		return result_write;
+	}
 
 	ome::ScanInfo scan_info{};
 	scan_info.id = 0;
@@ -222,25 +329,12 @@ int32_t ome_write_example()
 	scan_info.pixel_type = ome::PixelType::PIXEL_UINT8;
 	const char* dimension_order = "XYZTC";
 	memcpy_s(scan_info.dimension_order, NAME_LEN, dimension_order, strlen(dimension_order));
-
-	ome::PlateInfo plate_info{};
-	plate_info.id = 0;
-	plate_info.width = 115.5f;
-	plate_info.height = 70.3f;
-	plate_info.row_size = 1;
-	plate_info.column_size = 2;
-	plate_info.physicalsize_unit_x = ome::DistanceUnit::DISTANCE_MILLIMETER;
-	plate_info.physicalsize_unit_y = ome::DistanceUnit::DISTANCE_MILLIMETER;
-	std::filesystem::path p = std::filesystem::u8path("中文English混合Plate");
-	std::wstring plate_name = p.generic_wstring();
-	wmemcpy_s(plate_info.name, NAME_LEN, plate_name.c_str(), plate_name.size());
-	int32_t result_write = ome_add_plate(hdl_write, plate_info);
-	if (result_write != 0)
-		goto END;
-
 	result_write = ome_add_scan(hdl_write, plate_info.id, scan_info);
 	if (result_write != 0)
-		goto END;
+	{
+		ome_close_file(hdl_write);
+		return result_write;
+	}
 
 	for (uint32_t w = 0; w < 2; w++)
 	{
@@ -278,7 +372,7 @@ int32_t ome_write_example()
 		{
 			ome::ChannelInfo channel_info{};
 			channel_info.id = c;
-			channel_info.sample_per_pixel = 1;
+			channel_info.samples_per_pixel = 1;
 			channel_info.bin_size = 1;
 			std::filesystem::path p_c = std::filesystem::u8path("通道Channel-" + std::to_string(c));
 			std::wstring channel_name = p_c.generic_wstring();
@@ -287,7 +381,7 @@ int32_t ome_write_example()
 			if (result_write != 0)
 				goto END;
 
-			uint32_t tile_stride = scan_info.tile_pixel_size_width * channel_info.sample_per_pixel * ((scan_info.significant_bits + 7) / 8);
+			uint32_t tile_stride = scan_info.tile_pixel_size_width * channel_info.samples_per_pixel * ((scan_info.significant_bits + 7) / 8);
 			std::unique_ptr<uint8_t[]> auto_tile_data = std::make_unique<uint8_t[]>(tile_stride * scan_info.tile_pixel_size_height);
 			uint8_t* tile_data = auto_tile_data.get();
 			memset(tile_data, 0, tile_stride * scan_info.tile_pixel_size_height);
@@ -344,20 +438,23 @@ END:
 int main()
 {
 	int32_t result = 0;
-	result = ome_read_example_by_tile(2, 2);
+
+	result = ome_read_data_by_tile_example();
 	if (result != 0)
-		std::cout << "read example by tile error with ErrorCode : " << result << std::endl;
-	ome::OmeRect rect = { 0 };
-	rect.x = 50;
-	rect.y = 60;
-	rect.width = 600;
-	rect.height = 640;
-	result = ome_read_example_by_rect(rect);
+		std::cout << "read data by tile error with ErrorCode : " << result << std::endl;
+
+	result = ome_read_data_by_rect_example();
 	if (result != 0)
-		std::cout << "read example by rectangle error with ErrorCode : " << result << std::endl;
+		std::cout << "read data by rectangle error with ErrorCode : " << result << std::endl;
+
 	result = ome_write_example();
 	if (result != 0)
 		std::cout << "write example error with ErrorCode : " << result << std::endl;
+
+	result = ome_read_tag_example();
+	if (result != 0)
+		std::cout << "read tag example error with ErrorCode : " << result << std::endl;
+
 	return result;
 }
 

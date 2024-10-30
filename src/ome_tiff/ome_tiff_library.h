@@ -325,14 +325,17 @@ OME_TIFF_LIBRARY_API int32_t ome_get_raw_tile_data(int32_t handle, ome::FrameInf
  * @param[in] handle				Handle of an opened ome-tiff file.
  * @param[in] frame					The information of current image.\n
  									if "plate_id" in "frame" is UINT32_MAX(0xffffffff), this function will get tag from header file.
- * @param[in] tag_id				Tag id, which tag you want to get its value.
- * @param[in,out] tag_size			If the "tag_value" is null pointer, this is a output parameter, indicate byte size of "tag_value";\n
-									Else, this is a input parameter, indicate memory space you have allocated for the "tag_value"(size in byte).
+ * @param[in,out] tag_type			Indicate data type of "tag_value".\n
+									If the "tag_value" is null pointer, this is a output parameter;\n
+									Otherwise, this is a input parameter, it will be used for check byte size of "tag_value".
+ * @param[in,out] tag_count			Indicate data element count of "tag_value".\n
+									If the "tag_value" is null pointer, this is a output parameter;\n
+									Otherwise, this is a input parameter, it will be used for check byte size of "tag_value".
  * @param[out] tag_value			Buffer of tag value will be stored with tag_id.
  *
  * @return		Error code defines by "ErrorCode" in "ome.def.h".
 */
-OME_TIFF_LIBRARY_API int32_t ome_get_tag(int32_t handle, ome::FrameInfo frame, uint16_t tag_id, uint32_t* tag_size, void* tag_value);
+OME_TIFF_LIBRARY_API int32_t ome_get_tag(int32_t handle, ome::FrameInfo frame, uint16_t tag_id, ome::TiffTagDataType* tag_type, uint32_t* tag_count, void* tag_value);
 
 /**
  * @brief		Set data of tag to specific frame in tiff file.

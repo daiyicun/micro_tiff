@@ -6,12 +6,10 @@ static std::vector<OmeTiff*> vecOmeTiff;
 using namespace ome;
 
 #ifndef CHECK_HANDLE
-#define CHECK_HANDLE(handle) \
-	if (handle < 0 || (size_t)handle >= vecOmeTiff.size() || vecOmeTiff[handle] == nullptr) \
-		return ErrorCode::ERR_HANDLE_NOT_EXIST;
+#define CHECK_HANDLE(handle) if (handle < 0 || (size_t)handle >= vecOmeTiff.size() || vecOmeTiff[handle] == nullptr) return ErrorCode::ERR_HANDLE_NOT_EXIST
 #endif // !CHECK_HANDLE
 #ifndef CHECK_BUFFER
-#define CHECK_BUFFER(buffer) if(buffer == nullptr) return ErrorCode::ERR_BUFFER_IS_NULL;
+#define CHECK_BUFFER(buffer) if(buffer == nullptr) return ErrorCode::ERR_BUFFER_IS_NULL
 #endif // !CHECK_BUFFER
 
 int32_t ome_open_file(const wchar_t* file_name, OpenMode mode, CompressionMode cm)
@@ -21,36 +19,36 @@ int32_t ome_open_file(const wchar_t* file_name, OpenMode mode, CompressionMode c
 	std::wstring full_path_string = std::wstring(full_file_name);
 
 	size_t size = vecOmeTiff.size();
-	OmeTiff* omeTiff = nullptr;
+	OmeTiff* tiff = nullptr;
 	for (size_t i = 0; i < size; i++) {
-		omeTiff = vecOmeTiff.at(i);
-		if (omeTiff != nullptr) {
-			if (omeTiff->GetFileFullName() == full_path_string) {
-				if (omeTiff->GetOpenMode() != OpenMode::READ_ONLY_MODE)
+		tiff = vecOmeTiff.at(i);
+		if (tiff != nullptr) {
+			if (tiff->GetFileFullName() == full_path_string) {
+				if (tiff->GetOpenMode() != OpenMode::READ_ONLY_MODE)
 					return ErrorCode::TIFF_ERR_WRONG_OPEN_MODE;
 				break;
 			}
 		}
 	}
 
-	omeTiff = new(std::nothrow) OmeTiff();
-	if (omeTiff == nullptr) {
+	tiff = new(std::nothrow) OmeTiff();
+	if (tiff == nullptr) {
 		return ErrorCode::TIFF_ERR_ALLOC_MEMORY_FAILED;
 	}
-	int32_t ret = omeTiff->Init(full_file_name, mode, cm);
+	int32_t ret = tiff->Init(full_file_name, mode, cm);
 	if (ret == ErrorCode::STATUS_OK) {
 		for (size_t i = 0; i < vecOmeTiff.size(); i++)
 		{
 			if (vecOmeTiff[i] == nullptr) {
-				vecOmeTiff[i] = omeTiff;
+				vecOmeTiff[i] = tiff;
 				return (int32_t)i;
 			}
 		}
-		vecOmeTiff.emplace_back(omeTiff);
+		vecOmeTiff.emplace_back(tiff);
 		return (int32_t)vecOmeTiff.size() - 1;
 	}
 
-	delete omeTiff;
+	delete tiff;
 	return ret;
 }
 
@@ -186,22 +184,22 @@ int32_t ome_get_raw_data(int32_t handle, FrameInfo frame, OmeRect src_rect, void
 	return vecOmeTiff[handle]->LoadRawData(frame, dst_size, src_rect, image_data, stride);
 }
 
-int32_t ome_get_raw_tile_data(int32_t handle, ome::FrameInfo frame, uint32_t row, uint32_t column, void* image_data, uint32_t stride)
+int32_t ome_get_raw_tile_data(int32_t handle, FrameInfo frame, uint32_t row, uint32_t column, void* image_data, uint32_t stride)
 {
 	CHECK_HANDLE(handle);
 	CHECK_BUFFER(image_data);
 	return vecOmeTiff[handle]->LoadRawData(frame, row, column, image_data, stride);
 }
 
-int32_t ome_get_tag(int32_t handle, FrameInfo frame, uint16_t tag_id, uint32_t* tag_size, void* tag_value)
+int32_t ome_get_tag(int32_t handle, FrameInfo frame, uint16_t tag_id, TiffTagDataType* tag_type, uint32_t* tag_count, void* tag_value)
 {
 	CHECK_HANDLE(handle);
-	return vecOmeTiff[handle]->GetTag(frame, tag_id, *tag_size, tag_value);
+	return vecOmeTiff[handle]->GetTag(frame, tag_id, *tag_type, *tag_count, tag_value);
 }
 
 int32_t ome_set_tag(int32_t handle, FrameInfo frame, uint16_t tag_id, TiffTagDataType tag_type, uint32_t tag_count, void* tag_value)
 {
 	CHECK_HANDLE(handle);
 	CHECK_BUFFER(tag_value);
-	return vecOmeTiff[handle]->SetTag(frame, tag_id, (uint16_t)tag_type, tag_count, tag_value);
+	return vecOmeTiff[handle]->SetTag(frame, tag_id, tag_type, tag_count, tag_value);
 }

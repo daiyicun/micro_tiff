@@ -1,6 +1,6 @@
 #pragma once
 #include "ome_struct.h"
-#include "..\micro_tiff\micro_tiff.h"
+#include "../micro_tiff/micro_tiff.h"
 
 class TiffContainer
 {
@@ -43,6 +43,6 @@ public:
 		ome::PixelType pixel_type, uint16_t samples_per_pixel, ome::CompressionMode compress_mode);
 	int32_t CloseIFD(uint32_t ifd_no);
 
-	int32_t SetTag(uint32_t ifd_no, uint16_t tag_id, uint16_t tag_type, uint32_t tag_count, void* tag_value);
-	int32_t GetTag(uint32_t ifd_no, uint16_t tag_id, uint32_t& tag_size, void* tag_value);
+	int32_t SetTag(uint32_t ifd_no, uint16_t tag_id, ome::TiffTagDataType tag_type, uint32_t tag_count, void* tag_value);
+	int32_t GetTag(uint32_t ifd_no, uint16_t tag_id, ome::TiffTagDataType& tag_type, uint32_t& tag_count, void* tag_value);
 };

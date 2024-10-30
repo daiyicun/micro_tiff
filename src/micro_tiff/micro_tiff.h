@@ -90,7 +90,7 @@ int32_t micro_tiff_CreateIFD(int32_t hdl, ImageInfo &image_info);
 int32_t micro_tiff_CloseIFD(int32_t hdl, int32_t ifd_no);
 
 int32_t micro_tiff_GetIFDSize(int32_t hdl);
-int32_t micro_tiff_GetImageInfo(int32_t hdl, uint32_t ifd_no, ImageInfo& imageInfo);
+int32_t micro_tiff_GetImageInfo(int32_t hdl, uint32_t ifd_no, ImageInfo& image_info);
 
 int32_t micro_tiff_SaveBlock(int32_t hdl, uint32_t ifd_no, uint32_t block_no, uint64_t actual_byte_size, void* buf);
 int32_t micro_tiff_LoadBlock(int32_t hdl, uint32_t ifd_no, uint32_t block_no, uint64_t &actual_load_size, void* buf);

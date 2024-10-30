@@ -4,8 +4,8 @@
 #include "ometiff_container.h"
 //#include "jpeg_handler.h"
 //#include "..\lz4-1.9.2\lz4.h"
-#include "..\lzw\lzw.h"
-#include "..\common\data_predict.h"
+#include "../lzw/lzw.h"
+#include "../common/data_predict.h"
 //#include "..\p2d\p2d_lib.h"
 //#include "..\p2d\img.h"
 //#include "..\p2d\p2d_basic.h"
@@ -36,20 +36,20 @@ inline static uint8_t GetBytes(PixelType type) { return GetBits(type) / 8; }
 
 static int32_t convert_tileIndex_to_rect(const uint32_t row, const uint32_t column, const OmeSize full_size, const OmeSize tile_size, OmeRect& rect)
 {
-	uint32_t multiHeight = row * tile_size.height;
-	uint32_t multiWidth = column * tile_size.width;
-	if (full_size.height <= multiHeight)
+	uint32_t multi_height = row * tile_size.height;
+	uint32_t multi_width = column * tile_size.width;
+	if (full_size.height <= multi_height)
 		return ErrorCode::ERR_COLUMN_OUT_OF_RANGE;
-	if (full_size.width <= multiWidth)
+	if (full_size.width <= multi_width)
 		return ErrorCode::ERR_ROW_OUT_OF_RANGE;
 
-	uint32_t tempHeight = full_size.height - multiHeight;
-	uint32_t tempWidth = full_size.width - multiWidth;
+	uint32_t temp_height = full_size.height - multi_height;
+	uint32_t temp_width = full_size.width - multi_width;
 
-	rect.x = multiWidth;
-	rect.y = multiHeight;
-	rect.width = tempWidth < tile_size.width ? tempWidth : tile_size.width;
-	rect.height = tempHeight < tile_size.height ? tempHeight : tile_size.height;
+	rect.x = multi_width;
+	rect.y = multi_height;
+	rect.width = temp_width < tile_size.width ? temp_width : tile_size.width;
+	rect.height = temp_height < tile_size.height ? temp_height : tile_size.height;
 	return ErrorCode::STATUS_OK;
 }
 
@@ -529,57 +529,27 @@ int32_t TiffContainer::CreateIFD(const uint32_t width, const uint32_t height,
 	return micro_tiff_CreateIFD(_hdl, info);
 }
 
-int32_t TiffContainer::SetTag(const uint32_t ifd_no, const uint16_t tag_id, const uint16_t tag_type, const uint32_t tag_size, void* tag_value)
+int32_t TiffContainer::SetTag(const uint32_t ifd_no, const uint16_t tag_id, const TiffTagDataType tag_type, const uint32_t tag_size, void* tag_value)
 {
-	return micro_tiff_SetTag(_hdl, ifd_no, tag_id, tag_type, tag_size, tag_value);
+	return micro_tiff_SetTag(_hdl, ifd_no, tag_id, (uint16_t)tag_type, tag_size, tag_value);
 }
 
-int32_t TiffContainer::GetTag(const uint32_t ifd_no, const uint16_t tag_id, uint32_t& tag_size, void* tag_value)
+int32_t TiffContainer::GetTag(const uint32_t ifd_no, const uint16_t tag_id, TiffTagDataType& tag_type, uint32_t& tag_count, void* tag_value)
 {
-	uint16_t tag_type = 0;
-	uint32_t tag_count = 0;
-	int32_t status = micro_tiff_GetTagInfo(_hdl, ifd_no, tag_id, tag_type, tag_count);
-	if (status != ErrorCode::STATUS_OK)
-		return status;
+    uint16_t tag_data_type = 0;
+    uint32_t tag_data_count = 0;
+    int32_t status = micro_tiff_GetTagInfo(_hdl, ifd_no, tag_id, tag_data_type, tag_data_count);
+    if (status != ErrorCode::STATUS_OK)
+        return status;
 
-	uint8_t type_size = 0;
-	switch (tag_type)
-	{
-	case TagDataType::TIFF_ASCII:
-	case TagDataType::TIFF_BYTE:
-	case TagDataType::TIFF_SBYTE:
-	case TagDataType::TIFF_UNDEFINED:
-		type_size = 1;
-		break;
-	case TagDataType::TIFF_SHORT:
-	case TagDataType::TIFF_SSHORT:
-		type_size = 2;
-		break;
-	case TagDataType::TIFF_LONG:
-	case TagDataType::TIFF_SLONG:
-	case TagDataType::TIFF_FLOAT:
-	case TagDataType::TIFF_IFD:
-		type_size = 4;
-		break;
-	case TagDataType::TIFF_RATIONAL:
-	case TagDataType::TIFF_SRATIONAL:
-	case TagDataType::TIFF_DOUBLE:
-	case TagDataType::TIFF_LONG8:
-	case TagDataType::TIFF_SLONG8:
-	case TagDataType::TIFF_IFD8:
-		type_size = 8;
-		break;
-	default:
-		return ErrorCode::TIFF_ERR_TAG_TYPE_INCORRECT;
-	}
+    if (tag_value == nullptr)
+    {
+        tag_type = (TiffTagDataType)tag_data_type;
+        tag_count = tag_data_count;
+        return ErrorCode::STATUS_OK;
+    }
 
-	if (tag_value == nullptr)
-	{
-		tag_size = (uint32_t)type_size * tag_count;
-		return ErrorCode::STATUS_OK;
-	}
-
-	if (tag_size < (uint32_t)type_size * tag_count)
+	if ((TiffTagDataType)tag_data_type != tag_type || tag_data_count != tag_count)
 		return ErrorCode::ERR_TAG_CONDITION_NOT_MET;
 
 	return micro_tiff_GetTag(_hdl, ifd_no, tag_id, tag_value);

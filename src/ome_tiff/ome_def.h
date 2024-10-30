@@ -332,7 +332,7 @@ namespace ome
 	struct ChannelInfo
 	{
 		uint32_t id;
-		uint32_t sample_per_pixel;
+		uint32_t samples_per_pixel;
 		uint32_t bin_size;
 		wchar_t name[NAME_LEN];
 	};

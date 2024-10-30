@@ -5,12 +5,12 @@ using namespace std;
 tiff_core::tiff_core(void)
 {
 	_tiff_hdl = nullptr;
-	ifd_container.clear();
+	_ifd_container.clear();
 	_big_endian = false;
 	_big_tiff = false;
 	_open_flag = 0;
-	tif_first_ifd_offset = 0;
-	tif_first_ifd_position = 0;
+	_tif_first_ifd_offset = 0;
+	_tif_first_ifd_position = 0;
 }
 
 tiff_core::~tiff_core(void)
@@ -20,28 +20,28 @@ tiff_core::~tiff_core(void)
 
 void tiff_core::dispose(void)
 {
-	for (auto i : ifd_container) {
+	for (auto i : _ifd_container) {
 		if (i != nullptr) {
 			delete(i);
 		}
 	}
-	ifd_container.clear();
+	_ifd_container.clear();
 }
 
-TiffErrorCode tiff_core::open(const wchar_t* tiffFullName, uint8_t open_flag)
+TiffErrorCode tiff_core::open(const wchar_t* tiffFullName, const uint8_t open_flag)
 {
-	bool isCreate = open_flag & OPENFLAG_CREATE;
-	bool isWrite = open_flag & OPENFLAG_WRITE;
+	bool is_create = open_flag & OPENFLAG_CREATE;
+	bool is_write = open_flag & OPENFLAG_WRITE;
 	TiffErrorCode ret;
-	if (isCreate && !isWrite) {
+	if (is_create && !is_write) {
 		return TiffErrorCode::TIFF_ERR_OPEN_FILE_PARAMETER_ERROR;
-	}	
+	}
 
-	if (isCreate) {
+	if (is_create) {
 		_big_tiff = open_flag & OPENFLAG_BIGTIFF;
 		_tiff_hdl = _wfsopen(tiffFullName, L"wb+", _SH_DENYWR);
 	}
-	else if (isWrite) {
+	else if (is_write) {
 		_tiff_hdl = _wfsopen(tiffFullName, L"rb+", _SH_DENYWR);
 	}
 	else {
@@ -52,47 +52,47 @@ TiffErrorCode tiff_core::open(const wchar_t* tiffFullName, uint8_t open_flag)
 	}
 	else {
 		_full_path_name = wstring(tiffFullName);
-		if (isCreate) 
+		if (is_create)
 		{
-			ret = WriteHeader();
-		} 
-		else{
-			ret = ReadHeader();//read/read_write mode.
+			ret = write_header();
+		}
+		else {
+			ret = read_header();//read/read_write mode.
 		}
 	}
 	if (ret == TiffErrorCode::TIFF_STATUS_OK) {
-		_open_flag = open_flag;		
+		_open_flag = open_flag;
 	}
 	return ret;
 }
 
-TiffErrorCode tiff_core::WriteHeader(void)
+TiffErrorCode tiff_core::write_header(void)
 {
 	uint8_t zero_data[8] = { 0 };
 	_fseeki64(_tiff_hdl, 0, SEEK_SET);
 	//tif_curOffset = 0;
 	if (_big_tiff) {
 		uint8_t data[] = TIFF_BIGTIFF_HEADER_CHAR;
-		size_t _size = sizeof(data);
-		WriteSequence(data, _size, 1);
+		size_t size = sizeof(data);
+		WriteSequence(data, size, 1);
 		WriteSequence(zero_data, BIG_TIFF_OFFSET_SIZE, 1);
 	}
 	else {
 		uint8_t data[] = TIFF_CLASSIC_HEADER_CHAR;
-		size_t _size = sizeof(data);
-		WriteSequence(data, _size, 1);
+		size_t size = sizeof(data);
+		WriteSequence(data, size, 1);
 		WriteSequence(zero_data, CLASSIC_TIFF_OFFSET_SIZE, 1);
 	}
 	{
 		uint8_t data[] = TIFF_HEADER_FLAG_STR;
-		size_t _size = sizeof(data);
-		WriteSequence(data, _size, 1);
+		size_t size = sizeof(data);
+		WriteSequence(data, size, 1);
 	}
 
 	return TiffErrorCode::TIFF_STATUS_OK;
 }
 
-TiffErrorCode tiff_core::ReadHeader(void)
+TiffErrorCode tiff_core::read_header(void)
 {
 	uint8_t data[16] = { 0 };
 	size_t rd_size = 0;
@@ -104,7 +104,7 @@ TiffErrorCode tiff_core::ReadHeader(void)
 		_big_endian = true;
 		return TiffErrorCode::TIFF_ERR_BIGENDIAN_NOT_SUPPORT;
 	}
-	else if (data[0] == 0x49 || data[1] == 0x49){
+	else if (data[0] == 0x49 || data[1] == 0x49) {
 		_big_endian = false;
 	}
 	else {
@@ -115,19 +115,19 @@ TiffErrorCode tiff_core::ReadHeader(void)
 	//0x2a:classic tiff ;0x2b:BigTiff
 	if (bigtiff_flag == 0x2b) {
 		_big_tiff = true;
-		tif_first_ifd_position = 4;
+		_tif_first_ifd_position = 4;
 	}
 	else if (bigtiff_flag == 0x2a) {
 		_big_tiff = false;
-		tif_first_ifd_position = 8;
+		_tif_first_ifd_position = 8;
 	}
 	else return TiffErrorCode::TIFF_ERR_NO_TIFF_FORMAT;
 
 	if (_big_tiff) {
-		tif_first_ifd_offset = read_uint64(&data[8], _big_endian);
+		_tif_first_ifd_offset = read_uint64(&data[8], _big_endian);
 	}
 	else {
-		tif_first_ifd_offset = read_uint32(&data[4], _big_endian);
+		_tif_first_ifd_offset = read_uint32(&data[4], _big_endian);
 	}
 
 	int32_t ret_load_ifds = load_ifds();
@@ -144,7 +144,7 @@ TiffErrorCode tiff_core::close(void)
 	return TiffErrorCode::TIFF_STATUS_OK;
 }
 
-int32_t tiff_core::create_ifd(ImageInfo& image_info)
+int32_t tiff_core::create_ifd(const ImageInfo& image_info)
 {
 	if ((_open_flag & OPENFLAG_WRITE) == OPENFLAG_READ) {
 		return TiffErrorCode::TIFF_ERR_WRONG_OPEN_MODE;
@@ -153,21 +153,21 @@ int32_t tiff_core::create_ifd(ImageInfo& image_info)
 	if (ifd == nullptr) {
 		return TiffErrorCode::TIFF_ERR_ALLOC_MEMORY_FAILED;
 	}
-	ifd_container.emplace_back(ifd);
+	_ifd_container.emplace_back(ifd);
 	TiffErrorCode ret = ifd->wr_ifd_info(image_info);
 	if (ret != TiffErrorCode::TIFF_STATUS_OK) {
 		return ret;
 	}
-	return (int32_t)(ifd_container.size() - 1);
+	return (int32_t)(_ifd_container.size() - 1);
 }
 
 int32_t tiff_core::load_ifds(void)
 {
 	int32_t ifd_size = 0;
-	uint64_t next_ifd_offset = tif_first_ifd_offset;
+	uint64_t next_ifd_offset = _tif_first_ifd_offset;
 	dispose(); //clear if idf list not empty.
 
-	if (tif_first_ifd_offset == 0) {
+	if (_tif_first_ifd_offset == 0) {
 		return TiffErrorCode::TIFF_ERR_NO_IFD_FOUND;
 	}
 
@@ -181,39 +181,39 @@ int32_t tiff_core::load_ifds(void)
 		if (err != TiffErrorCode::TIFF_STATUS_OK)
 			break;
 		next_ifd_offset = ifd->get_next_ifd_offset();
-		ifd_container.emplace_back(ifd);
+		_ifd_container.emplace_back(ifd);
 		ifd_size++;
 	}
 
 	return ifd_size;
 }
 
-int32_t tiff_core::save_block(uint32_t ifd_no, uint32_t block_no, uint64_t actual_byte_size, uint8_t* buf)
+int32_t tiff_core::save_block(const uint32_t ifd_no, const uint32_t block_no, const uint64_t actual_byte_size, uint8_t* buf)
 {
 	if ((_open_flag & OPENFLAG_WRITE) == OPENFLAG_READ) {
 		return TiffErrorCode::TIFF_ERR_WRONG_OPEN_MODE;
 	}
-	CHECK_TIFF_ERROR(check_handle<tiff_ifd>(ifd_no, ifd_container, TiffErrorCode::TIFF_ERR_NO_IFD_FOUND));
-	tiff_ifd* ifd = ifd_container[ifd_no];
+	CHECK_TIFF_ERROR(check_handle<tiff_ifd>(ifd_no, _ifd_container, TiffErrorCode::TIFF_ERR_NO_IFD_FOUND));
+	tiff_ifd* ifd = _ifd_container[ifd_no];
 	unique_lock<mutex> lck(_mutex);
 	return ifd->wr_block(block_no, actual_byte_size, buf);
 }
 
-int32_t tiff_core::load_block(uint32_t ifd_no, uint32_t block_no, uint64_t& actual_byte_size, uint8_t* buf)
+int32_t tiff_core::load_block(const uint32_t ifd_no, const uint32_t block_no, uint64_t& actual_byte_size, uint8_t* buf)
 {
-	CHECK_TIFF_ERROR(check_handle<tiff_ifd>(ifd_no, ifd_container, TiffErrorCode::TIFF_ERR_NO_IFD_FOUND));
-	tiff_ifd* ifd = ifd_container[ifd_no];
+	CHECK_TIFF_ERROR(check_handle<tiff_ifd>(ifd_no, _ifd_container, TiffErrorCode::TIFF_ERR_NO_IFD_FOUND));
+	tiff_ifd* ifd = _ifd_container[ifd_no];
 	unique_lock<mutex> lck(_mutex);
 	return ifd->rd_block(block_no, actual_byte_size, buf);
 }
 
-int32_t tiff_core::close_ifd(uint32_t ifd_no)
+int32_t tiff_core::close_ifd(const uint32_t ifd_no)
 {
 	if ((_open_flag & OPENFLAG_WRITE) == OPENFLAG_READ) {
 		return TiffErrorCode::TIFF_STATUS_OK;
 	}
-	CHECK_TIFF_ERROR(check_handle<tiff_ifd>(ifd_no, ifd_container, TiffErrorCode::TIFF_ERR_NO_IFD_FOUND));
-	tiff_ifd* ifd = ifd_container[ifd_no];
+	CHECK_TIFF_ERROR(check_handle<tiff_ifd>(ifd_no, _ifd_container, TiffErrorCode::TIFF_ERR_NO_IFD_FOUND));
+	tiff_ifd* ifd = _ifd_container[ifd_no];
 
 	int64_t ifd_offset_pos;
 	size_t write_size;
@@ -228,7 +228,7 @@ int32_t tiff_core::close_ifd(uint32_t ifd_no)
 
 	if (ifd_no > 0)
 	{
-		tiff_ifd* previous_ifd = ifd_container[ifd_no - 1];
+		tiff_ifd* previous_ifd = _ifd_container[ifd_no - 1];
 		if (!previous_ifd->get_is_purged()) {
 			return TiffErrorCode::TIFF_ERR_PREVIOUS_IFD_NOT_CLOSED;
 		}
@@ -245,40 +245,40 @@ int32_t tiff_core::close_ifd(uint32_t ifd_no)
 		WriteSequence(&ifd_offset, write_size, 1);
 		_fseeki64(_tiff_hdl, 0, SEEK_END);
 	}
-	
+
 	return TiffErrorCode::TIFF_STATUS_OK;
 }
 
-int32_t tiff_core::get_image_info(uint32_t ifd_no, ImageInfo& image_info)
+int32_t tiff_core::get_image_info(const uint32_t ifd_no, ImageInfo& image_info)
 {
-	CHECK_TIFF_ERROR(check_handle<tiff_ifd>(ifd_no, ifd_container, TiffErrorCode::TIFF_ERR_NO_IFD_FOUND));
-	tiff_ifd* ifd = ifd_container[ifd_no];
+	CHECK_TIFF_ERROR(check_handle<tiff_ifd>(ifd_no, _ifd_container, TiffErrorCode::TIFF_ERR_NO_IFD_FOUND));
+	tiff_ifd* ifd = _ifd_container[ifd_no];
 	ifd->rd_ifd_info(image_info);
 	return TiffErrorCode::TIFF_STATUS_OK;
 }
 
-int32_t tiff_core::set_tag(uint32_t ifd_no, uint16_t tag_id, uint16_t tag_data_type, uint32_t tag_count, void* buf)
+int32_t tiff_core::set_tag(const uint32_t ifd_no, const uint16_t tag_id, const uint16_t tag_data_type, const uint32_t tag_count, void* buf)
 {
 	if ((_open_flag & OPENFLAG_WRITE) == OPENFLAG_READ) {
 		return TiffErrorCode::TIFF_ERR_WRONG_OPEN_MODE;
 	}
-	CHECK_TIFF_ERROR(check_handle<tiff_ifd>(ifd_no, ifd_container, TiffErrorCode::TIFF_ERR_NO_IFD_FOUND));
-	tiff_ifd* ifd = ifd_container[ifd_no];
+	CHECK_TIFF_ERROR(check_handle<tiff_ifd>(ifd_no, _ifd_container, TiffErrorCode::TIFF_ERR_NO_IFD_FOUND));
+	tiff_ifd* ifd = _ifd_container[ifd_no];
 	unique_lock<mutex> lck(_mutex);
 	return ifd->set_tag(tag_id, tag_data_type, tag_count, buf);
 }
 
-int32_t tiff_core::get_tag_info(uint32_t ifd_no, uint16_t tag_id, uint16_t& tag_data_type, uint32_t& tag_count)
+int32_t tiff_core::get_tag_info(const uint32_t ifd_no, const uint16_t tag_id, uint16_t& tag_data_type, uint32_t& tag_count)
 {
-	CHECK_TIFF_ERROR(check_handle<tiff_ifd>(ifd_no, ifd_container, TiffErrorCode::TIFF_ERR_NO_IFD_FOUND));
-	tiff_ifd* ifd = ifd_container[ifd_no];
+	CHECK_TIFF_ERROR(check_handle<tiff_ifd>(ifd_no, _ifd_container, TiffErrorCode::TIFF_ERR_NO_IFD_FOUND));
+	tiff_ifd* ifd = _ifd_container[ifd_no];
 	return ifd->get_tag_info(tag_id, tag_data_type, tag_count);
 }
 
-int32_t tiff_core::get_tag(uint32_t ifd_no, uint16_t tag_id, void* buf)
+int32_t tiff_core::get_tag(const uint32_t ifd_no, const uint16_t tag_id, void* buf)
 {
-	CHECK_TIFF_ERROR(check_handle<tiff_ifd>(ifd_no, ifd_container, TiffErrorCode::TIFF_ERR_NO_IFD_FOUND));
-	tiff_ifd* ifd = ifd_container[ifd_no];
+	CHECK_TIFF_ERROR(check_handle<tiff_ifd>(ifd_no, _ifd_container, TiffErrorCode::TIFF_ERR_NO_IFD_FOUND));
+	tiff_ifd* ifd = _ifd_container[ifd_no];
 	unique_lock<mutex> lck(_mutex);
 	return ifd->get_tag(tag_id, buf);
 }

@@ -1,5 +1,5 @@
 #include "ometiff_info.h"
-#include "..\tinyxml2\tinyxml2.h"
+#include "../tinyxml2/tinyxml2.h"
 
 #include <filesystem>
 
@@ -135,7 +135,7 @@ static DistanceUnit convert_string_to_distance_unit(const char* str)
 	return DistanceUnit::DISTANCE_UNDEFINED;
 }
 
-static PixelType convert_string_pixel_type(const char* type)
+static PixelType convert_string_to_pixel_type(const char* type)
 {
 	if (type == nullptr)
 		return PixelType::PIXEL_UNDEFINED;
@@ -235,7 +235,7 @@ int32_t parse_ome_xml(const string& xml, OmeTiff* tiff_obj)
 
 		XML_SCANF(element_pixels->Attribute("TileWidth"), "%u", &image->_pixels._info.tile_pixel_width);
 		XML_SCANF(element_pixels->Attribute("TileHeight"), "%u", &image->_pixels._info.tile_pixel_height);
-		image->_pixels._info.pixel_type = convert_string_pixel_type(element_pixels->Attribute("Type"));
+		image->_pixels._info.pixel_type = convert_string_to_pixel_type(element_pixels->Attribute("Type"));
 
 		const char* attri_sig = element_pixels->Attribute("SignificantBits");
 		if (attri_sig == nullptr) {
@@ -273,7 +273,7 @@ int32_t parse_ome_xml(const string& xml, OmeTiff* tiff_obj)
 				wmemcpy_s(channel_info.name, NAME_LEN, wstr.c_str(), wstr.size());
 			}
 
-			XML_SCANF(element_channel->Attribute("SamplesPerPixel"), "%u", &channel_info.sample_per_pixel);
+			XML_SCANF(element_channel->Attribute("SamplesPerPixel"), "%u", &channel_info.samples_per_pixel);
 			if (element_channel->Attribute("BinSize") != nullptr) {
 				XML_SCANF(element_channel->Attribute("BinSize"), "%u", &channel_info.bin_size);
 			}
@@ -761,7 +761,7 @@ int32_t generate_ome_xml(string& xml, const OmeTiff* tiff_obj)
 			fs::path p(channel_info.name);
 			string channel_name_str = p.u8string();
 			element_Channel->SetAttribute("Name", channel_name_str.c_str());
-			element_Channel->SetAttribute("SamplesPerPixel", channel_info.sample_per_pixel);
+			element_Channel->SetAttribute("SamplesPerPixel", channel_info.samples_per_pixel);
 			element_Channel->SetAttribute("BinSize", channel_info.bin_size);
 		}
 

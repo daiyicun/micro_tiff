@@ -1,5 +1,4 @@
 #pragma once
-#include "ome_struct.h"
 #include "ometiff_container.h"
 #include <mutex>
 
@@ -44,8 +43,8 @@ public:
 	int32_t GetScanRegions(uint32_t plate_id, uint32_t scan_id, uint32_t well_id, ome::ScanRegionInfo* scan_regions_info);
 	int32_t GetScanRegionsSize(uint32_t plate_id, uint32_t scan_id, uint32_t well_id);
 
-	int32_t SetTag(ome::FrameInfo frame, uint16_t tag_id, uint16_t tag_type, uint32_t tag_count, void* tag_value);
-	int32_t GetTag(ome::FrameInfo frame, uint16_t tag_id, uint32_t& tag_size, void* tag_value);
+	int32_t SetTag(ome::FrameInfo frame, uint16_t tag_id, ome::TiffTagDataType tag_type, uint32_t tag_count, void* tag_value);
+	int32_t GetTag(ome::FrameInfo frame, uint16_t tag_id, ome::TiffTagDataType& tag_type, uint32_t& tag_count, void* tag_value);
 
 	int32_t CreateOMEHeader();
 
